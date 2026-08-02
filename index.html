@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>Monitoraggio Spese</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<!-- librerie servite da questo stesso sito: nessun codice di terze parti -->
+<script src="lib/xlsx.full.min.js" defer></script>
+<style>
+:root{
+  --verde:#0f766e; --verde-scuro:#115e59; --rosso:#dc2626; --verde-ok:#16a34a;
+  --sfondo:#f4f6f5; --card:#ffffff; --testo:#1f2937; --muto:#6b7280; --bordo:#e5e7eb;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html{height:100%}
+body{min-height:100%; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--sfondo); color:var(--testo)}
+header{background:var(--verde); color:#fff; padding:14px 16px; padding-top:calc(14px + env(safe-area-inset-top)); position:sticky; top:0; z-index:20; display:flex; justify-content:space-between; align-items:center}
+header h1{font-size:18px; font-weight:600}
+.anno-nav{display:flex; align-items:center; gap:3px}
+.anno-nav button{background:rgba(255,255,255,.16); border:none; color:#fff; border-radius:8px;
+  padding:6px 10px; font-size:14px; font-weight:600; cursor:pointer}
+.anno-nav #hdr-anno{min-width:56px}
+main{max-width:640px; margin:0 auto; padding:12px 12px calc(96px + env(safe-area-inset-bottom))}
+.vista{display:none}
+.vista.attiva{display:block}
+.card{background:var(--card); border-radius:14px; padding:14px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card h2{font-size:14px; color:var(--muto); font-weight:600; text-transform:uppercase; letter-spacing:.03em; margin-bottom:10px}
+.selettore-mese{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px}
+.selettore-mese button{background:var(--card); border:1px solid var(--bordo); border-radius:10px; width:42px; height:42px; font-size:18px; cursor:pointer}
+.selettore-mese .titolo{font-size:17px; font-weight:600; text-transform:capitalize}
+.totale-grande{font-size:30px; font-weight:700}
+.totale-grande.neg{color:var(--rosso)}
+.totale-grande.pos{color:var(--verde-ok)}
+.sotto{color:var(--muto); font-size:13px; margin-top:2px}
+.cat-riga{display:flex; align-items:center; gap:10px; padding:7px 0}
+.cat-riga .nome{flex:0 0 110px; font-size:14px}
+.cat-riga .barra{flex:1; height:8px; background:var(--bordo); border-radius:4px; overflow:hidden}
+.cat-riga .barra i{display:block; height:100%; background:var(--verde); border-radius:4px}
+.cat-riga .importo{flex:0 0 84px; text-align:right; font-size:14px; font-variant-numeric:tabular-nums}
+.azioni{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px}
+.btn{flex:1 1 45%; border:none; border-radius:12px; padding:13px 10px; font-size:15px; font-weight:600; cursor:pointer; text-align:center}
+.btn.primario{background:var(--verde); color:#fff}
+.btn.secondario{background:#fff; color:var(--verde); border:1.5px solid var(--verde)}
+.btn.pericolo{background:#fff; color:var(--rosso); border:1.5px solid var(--rosso)}
+.btn:disabled{opacity:.5}
+.giorno-testata{display:flex; justify-content:space-between; font-size:13px; color:var(--muto); padding:10px 2px 4px; font-weight:600}
+.mov{display:flex; justify-content:space-between; align-items:center; background:var(--card); border-radius:12px; padding:11px 12px; margin-bottom:6px; cursor:pointer}
+.mov .sx .desc{font-size:15px}
+.mov .sx .cat{font-size:12px; color:var(--muto); margin-top:1px}
+.mov .sx .cat .tag{background:#e0f2f1; color:var(--verde-scuro); border-radius:6px; padding:1px 6px; margin-left:6px; font-size:11px}
+.mov .importo{font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap}
+.mov .importo.neg{color:var(--testo)}
+.mov .importo.pos{color:var(--verde-ok)}
+.vuoto{text-align:center; color:var(--muto); padding:30px 10px; font-size:14px}
+.griglia2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+label.campo{display:block; font-size:13px; color:var(--muto); margin-bottom:10px}
+label.campo span{display:block; margin-bottom:4px}
+input,select{width:100%; padding:11px; border:1px solid var(--bordo); border-radius:10px; font-size:16px; background:#fff; color:var(--testo)}
+.tabella-scroll{overflow-x:auto}
+table{border-collapse:collapse; font-size:13px; white-space:nowrap}
+th,td{padding:6px 8px; text-align:right; border-bottom:1px solid var(--bordo); font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left; position:sticky; left:0; background:var(--card)}
+th{color:var(--muto); font-weight:600}
+tr.evidenzia td{font-weight:700}
+.chips{display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; margin-bottom:8px}
+.chip{border:1px solid var(--bordo); background:#fff; border-radius:999px; padding:7px 13px; font-size:14px; cursor:pointer; white-space:nowrap}
+.chip.attivo{background:var(--verde); color:#fff; border-color:var(--verde)}
+nav{position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid var(--bordo); display:flex; z-index:20; padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1; background:none; border:none; padding:9px 0 7px; font-size:11px; color:var(--muto); cursor:pointer}
+nav button .ico{display:block; font-size:21px; margin-bottom:1px}
+nav button.attivo{color:var(--verde); font-weight:700}
+dialog{border:none; border-radius:16px; padding:0; width:min(94vw,520px); max-height:88vh}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+.dlg-testa{padding:14px 16px; border-bottom:1px solid var(--bordo); font-weight:700; font-size:16px; display:flex; justify-content:space-between; align-items:center}
+.dlg-testa button{background:none; border:none; font-size:20px; cursor:pointer; color:var(--muto)}
+.dlg-corpo{padding:16px; overflow-y:auto; max-height:60vh}
+.dlg-piede{padding:12px 16px; border-top:1px solid var(--bordo); display:flex; gap:10px}
+.anteprima-riga{display:flex; gap:8px; align-items:center; padding:8px 0; border-bottom:1px solid var(--bordo); font-size:13px}
+.anteprima-riga .info{flex:1; min-width:0}
+.anteprima-riga .info .d{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.anteprima-riga .info .m{color:var(--muto); font-size:12px}
+.anteprima-riga select{width:130px; padding:6px; font-size:13px}
+.anteprima-riga.escluso{opacity:.55}
+.anteprima-riga .motivo{color:var(--rosso); font-size:11px}
+.regola{display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--bordo); font-size:14px}
+.regola button{background:none; border:none; color:var(--rosso); font-size:16px; cursor:pointer}
+.nota{font-size:12.5px; color:var(--muto); line-height:1.45; margin-top:8px}
+.riga-flex{display:flex; gap:10px; align-items:end}
+.riga-flex label.campo{flex:1; margin-bottom:0}
+.toggle{display:flex; border:1px solid var(--bordo); border-radius:10px; overflow:hidden; margin-bottom:10px}
+.toggle button{flex:1; border:none; background:#fff; padding:10px; font-size:14px; cursor:pointer}
+.toggle button.attivo{background:var(--verde); color:#fff}
+svg.grafico{width:100%; height:150px; display:block}
+.msg{position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:#111827; color:#fff; padding:10px 18px; border-radius:999px; font-size:14px; z-index:50; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90vw; text-align:center}
+.msg.vis{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>Monitoraggio Spese</h1>
+  <div class="anno-nav">
+    <button id="anno-prec" title="Anno precedente">‹</button>
+    <button id="hdr-anno" title="Anno successivo"></button>
+    <button id="anno-succ" title="Anno successivo">›</button>
+  </div>
+</header>
+
+<main>
+  <!-- ============ VISTA SPESE ============ -->
+  <section class="vista attiva" id="vista-spese">
+    <div class="selettore-mese">
+      <button id="mese-prec">‹</button>
+      <div class="titolo" id="mese-titolo"></div>
+      <button id="mese-succ">›</button>
+    </div>
+
+    <div class="card">
+      <h2>Totale del mese</h2>
+      <div class="totale-grande" id="tot-mese"></div>
+      <div class="sotto" id="tot-mese-info"></div>
+    </div>
+
+    <div class="azioni">
+      <button class="btn primario" id="btn-aggiungi">+ Aggiungi spesa</button>
+      <button class="btn secondario" id="btn-importa">📄 Importa Revolut</button>
+      <button class="btn secondario" id="btn-importa-tr">📄 Importa Trade Republic</button>
+      <input type="file" id="file-csv" hidden>
+      <input type="file" id="file-csv-tr" hidden>
+    </div>
+    <div class="nota" style="margin:-4px 2px 12px">Estratto conto in <b>CSV</b> o <b>PDF</b>.</div>
+
+    <div class="card" id="card-categorie">
+      <h2>Per categoria</h2>
+      <div id="lista-categorie"></div>
+    </div>
+
+    <div id="lista-movimenti"></div>
+  </section>
+
+  <!-- ============ VISTA PATRIMONIO ============ -->
+  <section class="vista" id="vista-patrimonio">
+    <div class="card">
+      <h2>Patrimonio totale</h2>
+      <div class="totale-grande" id="patr-totale"></div>
+      <div class="sotto" id="patr-dettaglio"></div>
+      <svg class="grafico" id="grafico-patrimonio" viewBox="0 0 340 150" preserveAspectRatio="none"></svg>
+    </div>
+
+    <div class="card">
+      <h2>Valori iniziali (inizio anno)</h2>
+      <div class="griglia2">
+        <label class="campo"><span>Patrimonio investito (€)</span>
+          <input type="text" inputmode="decimal" id="inp-inv-iniziale"></label>
+        <label class="campo"><span>Patrimonio non investito (€)</span>
+          <input type="text" inputmode="decimal" id="inp-noninv-iniziale"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Voci del mese</h2>
+      <div class="chips" id="chips-mesi"></div>
+      <div class="griglia2">
+        <label class="campo"><span>Stipendio specializzazione (€)</span>
+          <input type="text" inputmode="decimal" id="inp-stip1"></label>
+        <label class="campo"><span>Stipendio guardia medica (€)</span>
+          <input type="text" inputmode="decimal" id="inp-stip2"></label>
+        <label class="campo"><span>Altre entrate (€)</span>
+          <input type="text" inputmode="decimal" id="inp-stip3"></label>
+        <label class="campo"><span>PAC versato (€)</span>
+          <input type="text" inputmode="decimal" id="inp-pac"></label>
+      </div>
+      <div class="nota" style="margin:-4px 0 12px">Il PAC versato passa dal patrimonio
+        non investito a quello investito. Non va registrato tra le spese: gli acquisti
+        di ETF importati da Trade Republic sono già esclusi.</div>
+      <div class="griglia2">
+        <label class="campo"><span>Patrimonio investito reale a fine mese (vuoto = automatico)</span>
+          <input type="text" inputmode="decimal" id="inp-ovr-inv"></label>
+        <label class="campo"><span>Patrimonio non investito reale a fine mese (vuoto = automatico)</span>
+          <input type="text" inputmode="decimal" id="inp-ovr-noninv"></label>
+      </div>
+      <div class="nota" id="nota-mese-patr"></div>
+    </div>
+
+    <div class="card">
+      <h2>Riepilogo annuale</h2>
+      <div class="tabella-scroll"><table id="tab-annuale"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ VISTA ALTRO ============ -->
+  <section class="vista" id="vista-altro">
+    <div class="card">
+      <h2>File Excel</h2>
+      <div class="azioni" style="margin-bottom:0">
+        <button class="btn primario" id="btn-esporta-xlsx">⬇ Scarica Excel</button>
+        <button class="btn secondario" id="btn-importa-xlsx">⬆ Carica Excel</button>
+        <input type="file" id="file-xlsx" accept=".xlsx" hidden>
+      </div>
+      <div class="nota">«Scarica Excel» genera un file con la stessa struttura del tuo
+        Monitoraggio_Spese.xlsx (registro + riepilogo + patrimonio, con formule).
+        «Carica Excel» sostituisce i dati dell'app con quelli del file.</div>
+    </div>
+
+    <div class="card">
+      <h2>Regole di categorizzazione Revolut</h2>
+      <div id="lista-regole"></div>
+      <div class="riga-flex" style="margin-top:10px">
+        <label class="campo"><span>Se la descrizione contiene…</span><input type="text" id="inp-regola-parola" placeholder="es. esselunga"></label>
+        <label class="campo"><span>Categoria</span><select id="inp-regola-cat"></select></label>
+        <button class="btn primario" style="flex:0 0 auto; padding:11px 16px" id="btn-regola-add">+</button>
+      </div>
+      <div class="nota">Le regole si applicano all'import dell'estratto conto: la prima che
+        corrisponde vince. Le spese non riconosciute finiscono in «altro»,
+        le entrate in «cashback».</div>
+    </div>
+
+    <div class="card">
+      <h2>Backup</h2>
+      <div class="azioni" style="margin-bottom:0">
+        <button class="btn secondario" id="btn-backup">Salva backup</button>
+        <button class="btn secondario" id="btn-ripristina">Ripristina backup</button>
+        <input type="file" id="file-json" accept=".json,application/json" hidden>
+      </div>
+      <div class="nota">I dati vivono solo su questo dispositivo (nessun cloud).
+        Salva ogni tanto un backup, o scarica l'Excel aggiornato.</div>
+      <button class="btn pericolo" style="width:100%; margin-top:12px" id="btn-azzera">Azzera tutti i dati</button>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button data-vista="vista-spese" class="attivo"><span class="ico">💶</span>Spese</button>
+  <button data-vista="vista-patrimonio"><span class="ico">📈</span>Patrimonio</button>
+  <button data-vista="vista-altro"><span class="ico">⚙️</span>Altro</button>
+</nav>
+
+<!-- ============ DIALOG MOVIMENTO ============ -->
+<dialog id="dlg-mov">
+  <div class="dlg-testa"><span id="dlg-mov-titolo">Nuova spesa</span><button data-chiudi>✕</button></div>
+  <div class="dlg-corpo">
+    <div class="toggle">
+      <button id="tgl-spesa" class="attivo">Spesa</button>
+      <button id="tgl-entrata">Entrata / rimborso</button>
+    </div>
+    <div class="griglia2">
+      <label class="campo"><span>Data</span><input type="date" id="mov-data"></label>
+      <label class="campo"><span>Importo (€)</span><input type="text" inputmode="decimal" id="mov-importo" placeholder="0,00"></label>
+    </div>
+    <label class="campo"><span>Categoria</span><select id="mov-categoria"></select></label>
+    <label class="campo"><span>Descrizione (facoltativa)</span><input type="text" id="mov-descrizione" placeholder="es. Spesa Esselunga"></label>
+  </div>
+  <div class="dlg-piede">
+    <button class="btn pericolo" id="mov-elimina" style="display:none">Elimina</button>
+    <button class="btn primario" id="mov-salva">Salva</button>
+  </div>
+</dialog>
+
+<!-- ============ DIALOG ANTEPRIMA IMPORT ============ -->
+<dialog id="dlg-import">
+  <div class="dlg-testa"><span id="dlg-import-titolo">Import estratto conto</span><button data-chiudi>✕</button></div>
+  <div class="dlg-corpo">
+    <div class="nota" id="import-riassunto" style="margin:0 0 8px"></div>
+    <div id="import-lista"></div>
+  </div>
+  <div class="dlg-piede">
+    <button class="btn primario" id="import-conferma">Importa</button>
+  </div>
+</dialog>
+
+<!-- ============ DIALOG DIAGNOSTICA ============ -->
+<dialog id="dlg-diag">
+  <div class="dlg-testa"><span>Movimenti non riconosciuti</span><button data-chiudi>✕</button></div>
+  <div class="dlg-corpo">
+    <div class="nota" style="margin-top:0">Ho letto il file ma non ho riconosciuto nessun movimento.
+      Qui sotto le prime righe estratte: copiale e mandale a Claude per adattare il lettore a questo formato.</div>
+    <pre id="diag-testo" style="white-space:pre-wrap; word-break:break-word; font-size:11px;
+      background:#f3f4f6; padding:10px; border-radius:8px; margin-top:10px"></pre>
+  </div>
+  <div class="dlg-piede"><button class="btn secondario" id="diag-copia">Copia righe</button></div>
+</dialog>
+
+<div class="msg" id="msg"></div>
+
+<script>
+"use strict";
+/* ============================== DATI ============================== */
+const CATEGORIE = ["Viveri","Carburante","Bollette","Casa","Tasse","Svago","Apparenza","abbonamenti","investimenti","altro","cashback"];
+const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+const MESI_BREVI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+const CHIAVE_LS = "monitoraggio-spese-v1";
+
+const REGOLE_PREDEFINITE = [
+["esselunga","Viveri"],["conad","Viveri"],["coop","Viveri"],["carrefour","Viveri"],["lidl","Viveri"],
+["eurospin","Viveri"],["penny","Viveri"],["despar","Viveri"],["pam ","Viveri"],["md ","Viveri"],
+["supermercat","Viveri"],["panificio","Viveri"],["macelleria","Viveri"],
+["eni ","Carburante"],["enilive","Carburante"],["q8","Carburante"],["esso","Carburante"],["tamoil","Carburante"],["ip station","Carburante"],["benzina","Carburante"],
+["enel","Bollette"],["a2a","Bollette"],["hera comm","Bollette"],["iren","Bollette"],["edison","Bollette"],["sorgenia","Bollette"],["fastweb","Bollette"],["vodafone","Bollette"],["windtre","Bollette"],["wind tre","Bollette"],["tim ","Bollette"],["iliad","Bollette"],
+["pagopa","Tasse"],["agenzia entrate","Tasse"],["f24","Tasse"],
+["netflix","abbonamenti"],["spotify","abbonamenti"],["disney","abbonamenti"],["dazn","abbonamenti"],["prime video","abbonamenti"],["amazon prime","abbonamenti"],["youtube premium","abbonamenti"],["apple.com/bill","abbonamenti"],["revolut premium","abbonamenti"],
+["cinema","Svago"],["ristorante","Svago"],["pizzeria","Svago"],["trattoria","Svago"],["osteria","Svago"],["mcdonald","Svago"],["burger","Svago"],["bar ","Svago"],["caffe","Svago"],["pub ","Svago"],["glovo","Svago"],["deliveroo","Svago"],["just eat","Svago"],["justeat","Svago"],
+["zalando","Apparenza"],["zara","Apparenza"],["h&m","Apparenza"],["ovs","Apparenza"],["parrucchier","Apparenza"],["barber","Apparenza"],["estetic","Apparenza"],["profumeria","Apparenza"],
+["stamp duty","Tasse"],["imposta di bollo","Tasse"],["imposte","Tasse"],["kindle","Svago"]
+];
+/* regole aggiunte dopo il primo rilascio: le unisco una sola volta a quelle già salvate */
+const REGOLE_NUOVE = [["stamp duty","Tasse"],["imposta di bollo","Tasse"],["imposte","Tasse"],["kindle","Svago"]];
+
+function annoVuoto(){
+  return {
+    invIniziale: 0,
+    nonInvIniziale: 0,
+    stipendi1: Array(12).fill(null),   // specializzazione
+    stipendi2: Array(12).fill(null),   // guardia medica
+    altreEntrate: Array(12).fill(null),
+    pac: Array(12).fill(null),         // versato nel PAC: sposta liquido -> investito
+    ovrInv: Array(12).fill(null),      // valore reale fine mese (come le celle sovrascritte nel file)
+    ovrNonInv: Array(12).fill(null)
+  };
+}
+function statoIniziale(){
+  const anno = new Date().getFullYear();
+  return {
+    anno,
+    anni: { [anno]: annoVuoto() },
+    categorie: [...CATEGORIE],
+    transazioni: [],
+    regole: REGOLE_PREDEFINITE.map(r=>({parola:r[0], categoria:r[1]}))
+  };
+}
+
+let stato = caricaStato();
+function migra(s){ // compatibilità con dati salvati da versioni precedenti
+  if(!Array.isArray(s.categorie) || !s.categorie.length) s.categorie=[...CATEGORIE];
+  if(!s.anno) s.anno=new Date().getFullYear();
+  if(!s.anni){ // schema vecchio: dati dell'anno al livello superiore
+    const a=annoVuoto();
+    a.invIniziale=s.invIniziale||0; a.nonInvIniziale=s.nonInvIniziale||0;
+    ["stipendi1","stipendi2","altreEntrate","pac","ovrInv","ovrNonInv"].forEach(k=>{
+      if(Array.isArray(s[k])) a[k]=s[k];
+      delete s[k];
+    });
+    delete s.invIniziale; delete s.nonInvIniziale;
+    s.anni={ [s.anno]: a };
+  }
+  if(!s.anni[s.anno]) s.anni[s.anno]=annoVuoto();
+  Object.values(s.anni).forEach(a=>{ if(!Array.isArray(a.pac)) a.pac=Array(12).fill(null); });
+  if(!Array.isArray(s.regole)) s.regole=REGOLE_PREDEFINITE.map(r=>({parola:r[0], categoria:r[1]}));
+  if(!s.regoleTR){
+    REGOLE_NUOVE.forEach(([p,c])=>{
+      if(!s.regole.some(r=>r.parola===p)) s.regole.unshift({parola:p, categoria:c});
+    });
+    s.regoleTR=true;
+  }
+  return s;
+}
+const cats = () => stato.categorie;
+const AD = () => { if(!stato.anni[stato.anno]) creaAnno(stato.anno); return stato.anni[stato.anno]; };
+function creaAnno(y){
+  if(stato.anni[y]) return;
+  const d=annoVuoto();
+  if(stato.anni[y-1]){ // aggancia il patrimonio a fine dicembre dell'anno precedente
+    const ultimo=calcolaPatrimonio(y-1)[11];
+    d.invIniziale=Math.round(ultimo.inv*100)/100;
+    d.nonInvIniziale=Math.round(ultimo.nonInv*100)/100;
+  }
+  stato.anni[y]=d;
+}
+function caricaStato(){
+  try{
+    const s = JSON.parse(localStorage.getItem(CHIAVE_LS));
+    if(s && Array.isArray(s.transazioni)) return migra(s);
+  }catch(e){}
+  return statoIniziale();
+}
+function salva(){ localStorage.setItem(CHIAVE_LS, JSON.stringify(stato)); }
+
+/* ============================== UTILS ============================== */
+const fmtEur = new Intl.NumberFormat("it-IT",{style:"currency",currency:"EUR"});
+const eur = v => fmtEur.format(v||0);
+function num(v){ if(v===null||v===undefined||v==="") return null;
+  const n = parseFloat(String(v).replace(/\./g, m=>m).replace(",",".")); return isNaN(n)?null:n; }
+function dataIt(iso){ const [a,m,g]=iso.split("-"); return `${g}/${m}/${a}`; }
+function oggiIso(){ return new Date().toISOString().slice(0,10); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function mostraMsg(t){ const el=document.getElementById("msg"); el.textContent=t; el.classList.add("vis");
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove("vis"),2600); }
+const $ = id => document.getElementById(id);
+
+/* ============================== CALCOLI ============================== */
+function transMese(mese, anno=stato.anno){ // mese 0-11
+  return stato.transazioni.filter(t=>{
+    const d = t.data.split("-"); return +d[0]===anno && +d[1]===mese+1;
+  });
+}
+function totalePerCategoria(mese, anno=stato.anno){
+  const tot = {}; cats().forEach(c=>tot[c]=0);
+  if(!("altro" in tot)) tot["altro"]=0;
+  transMese(mese, anno).forEach(t=>{ tot[t.categoria in tot ? t.categoria : "altro"] += t.importo; });
+  return tot;
+}
+function totaleMese(mese, anno=stato.anno){
+  let s=0; transMese(mese, anno).forEach(t=>s+=t.importo); return s;
+}
+/* Patrimonio: replica le formule del foglio "Stipendi e Guadagno" */
+function calcolaPatrimonio(anno=stato.anno){
+  const dati = stato.anni[anno] || annoVuoto();
+  const righe=[];
+  let inv = dati.invIniziale||0, nonInv = dati.nonInvIniziale||0;
+  for(let m=0;m<12;m++){
+    const stip = (dati.stipendi1[m]||0)+(dati.stipendi2[m]||0)+(dati.altreEntrate[m]||0);
+    const spese = totaleMese(m, anno); // negativo
+    const invest = totalePerCategoria(m, anno)["investimenti"]||0; // negativo
+    const pac = dati.pac[m]||0;        // versato nel PAC: esce dal liquido, entra nell'investito
+    const netto = stip + spese;
+    inv = dati.ovrInv[m]!=null ? dati.ovrInv[m] : inv - invest + pac;
+    nonInv = dati.ovrNonInv[m]!=null ? dati.ovrNonInv[m] : nonInv + netto - pac;
+    righe.push({mese:m, stip, spese, pac, netto, inv, nonInv, totale:inv+nonInv});
+  }
+  return righe;
+}
+
+/* ============================== VISTA SPESE ============================== */
+let meseSel = (new Date().getFullYear()===stato.anno) ? new Date().getMonth() : 0;
+
+function renderSpese(){
+  $("hdr-anno").textContent = stato.anno;
+  $("mese-titolo").textContent = MESI[meseSel]+" "+stato.anno;
+  const tot = totaleMese(meseSel);
+  const el = $("tot-mese");
+  el.textContent = eur(tot);
+  el.className = "totale-grande "+(tot<0?"neg":"pos");
+  const lista = transMese(meseSel);
+  $("tot-mese-info").textContent = lista.length+" movimenti";
+
+  // categorie
+  const perCat = totalePerCategoria(meseSel);
+  const elencoCat = Object.keys(perCat);
+  const max = Math.max(...elencoCat.map(c=>Math.abs(perCat[c])),1);
+  $("lista-categorie").innerHTML = elencoCat.filter(c=>perCat[c]!==0).map(c=>`
+    <div class="cat-riga"><div class="nome">${c}</div>
+      <div class="barra"><i style="width:${Math.abs(perCat[c])/max*100}%"></i></div>
+      <div class="importo">${eur(perCat[c])}</div></div>`).join("") ||
+    '<div class="vuoto">Nessuna spesa questo mese</div>';
+
+  // movimenti per giorno (desc)
+  const perGiorno = {};
+  lista.forEach(t=>{ (perGiorno[t.data]=perGiorno[t.data]||[]).push(t); });
+  const giorni = Object.keys(perGiorno).sort().reverse();
+  $("lista-movimenti").innerHTML = giorni.map(g=>{
+    const totG = perGiorno[g].reduce((s,t)=>s+t.importo,0);
+    return `<div class="giorno-testata"><span>${dataIt(g)}</span><span>${eur(totG)}</span></div>`+
+      perGiorno[g].map(t=>`
+      <div class="mov" data-id="${t.id}">
+        <div class="sx"><div class="desc">${t.descrizione||t.categoria}</div>
+          <div class="cat">${t.categoria}${t.fonte&&t.fonte!=="manuale"?`<span class="tag">${t.fonte}</span>`:""}</div></div>
+        <div class="importo ${t.importo<0?"neg":"pos"}">${eur(t.importo)}</div>
+      </div>`).join("");
+  }).join("") || '<div class="vuoto">Nessun movimento. Aggiungi una spesa o importa l\'estratto Revolut.</div>';
+
+  document.querySelectorAll(".mov").forEach(el=>el.onclick=()=>apriMovimento(el.dataset.id));
+}
+$("mese-prec").onclick=()=>{ meseSel=(meseSel+11)%12; renderSpese(); };
+$("mese-succ").onclick=()=>{ meseSel=(meseSel+1)%12; renderSpese(); };
+
+function cambiaAnno(y){
+  creaAnno(y); stato.anno=y; salva(); renderTutto();
+  mostraMsg("Anno "+y);
+}
+$("hdr-anno").onclick=()=>cambiaAnno(stato.anno+1);
+$("anno-succ").onclick=()=>cambiaAnno(stato.anno+1);
+$("anno-prec").onclick=()=>cambiaAnno(stato.anno-1);
+
+/* --- dialog movimento --- */
+let movCorrente=null, movSegno=-1;
+function apriMovimento(id){
+  movCorrente = id ? stato.transazioni.find(t=>t.id===id) : null;
+  $("dlg-mov-titolo").textContent = movCorrente?"Modifica movimento":"Nuova spesa";
+  $("mov-data").value = movCorrente?movCorrente.data:oggiIso();
+  $("mov-importo").value = movCorrente?String(Math.abs(movCorrente.importo)).replace(".",","):"";
+  $("mov-descrizione").value = movCorrente?movCorrente.descrizione:"";
+  $("mov-categoria").value = movCorrente&&cats().includes(movCorrente.categoria)?movCorrente.categoria:cats()[0];
+  catPrec = $("mov-categoria").value;
+  movSegno = movCorrente && movCorrente.importo>0 ? 1 : -1;
+  aggiornaToggle();
+  $("mov-elimina").style.display = movCorrente?"block":"none";
+  $("dlg-mov").showModal();
+}
+function aggiornaToggle(){
+  $("tgl-spesa").classList.toggle("attivo",movSegno<0);
+  $("tgl-entrata").classList.toggle("attivo",movSegno>0);
+}
+$("tgl-spesa").onclick=()=>{movSegno=-1;aggiornaToggle();};
+$("tgl-entrata").onclick=()=>{movSegno=1;aggiornaToggle();};
+$("btn-aggiungi").onclick=()=>apriMovimento(null);
+$("mov-salva").onclick=()=>{
+  const imp = num($("mov-importo").value);
+  if(!$("mov-data").value || imp===null || imp===0){ mostraMsg("Inserisci data e importo"); return; }
+  const dati = { data:$("mov-data").value, importo:movSegno*Math.abs(imp),
+    categoria:$("mov-categoria").value, descrizione:$("mov-descrizione").value.trim() };
+  if(movCorrente) Object.assign(movCorrente,dati);
+  else stato.transazioni.push({id:uid(), fonte:"manuale", ...dati});
+  salva(); $("dlg-mov").close(); renderTutto();
+};
+$("mov-elimina").onclick=()=>{
+  stato.transazioni = stato.transazioni.filter(t=>t!==movCorrente);
+  salva(); $("dlg-mov").close(); renderTutto(); mostraMsg("Movimento eliminato");
+};
+
+/* ============================== IMPORT REVOLUT ============================== */
+const TIPI_IGNORATI = new Set(["TOPUP","EXCHANGE"]);
+
+function parseCsv(testo, delim){
+  const righe=[]; let riga=[], campo="", inQ=false;
+  for(let i=0;i<testo.length;i++){
+    const c=testo[i];
+    if(inQ){ if(c==='"'){ if(testo[i+1]==='"'){campo+='"';i++;} else inQ=false; } else campo+=c; }
+    else if(c==='"') inQ=true;
+    else if(c===delim){ riga.push(campo); campo=""; }
+    else if(c==="\n"||c==="\r"){ if(c==="\r"&&testo[i+1]==="\n")i++;
+      riga.push(campo); if(riga.some(x=>x!=="")) righe.push(riga); riga=[]; campo=""; }
+    else campo+=c;
+  }
+  riga.push(campo); if(riga.some(x=>x!=="")) righe.push(riga);
+  return righe;
+}
+function parseDataRevolut(s){
+  s=(s||"").trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return null;
+}
+function leggiEstrattoRevolut(testo){
+  const delim = (testo.split("\n")[0].split(";").length > testo.split("\n")[0].split(",").length) ? ";" : ",";
+  const righe = parseCsv(testo.replace(/^﻿/,""), delim);
+  if(righe.length<2) throw new Error("File vuoto");
+  const testa = righe[0].map(h=>h.trim().toLowerCase());
+  const idx = nomi => { for(const n of nomi){ const i=testa.indexOf(n); if(i>=0) return i; } return -1; };
+  const iTipo=idx(["type"]), iData=idx(["completed date","started date","date"]),
+        iDesc=idx(["description"]), iImp=idx(["amount"]), iFee=idx(["fee"]), iStato=idx(["state"]);
+  if(iData<0||iDesc<0||iImp<0) throw new Error("Non sembra un estratto Revolut (mancano le colonne Date/Description/Amount)");
+  const out=[];
+  for(let r=1;r<righe.length;r++){
+    const R=righe[r];
+    const st = iStato>=0 ? (R[iStato]||"").trim().toUpperCase() : "COMPLETED";
+    const tipo = iTipo>=0 ? (R[iTipo]||"").trim().toUpperCase() : "";
+    if(st && st!=="COMPLETED") continue;
+    if(TIPI_IGNORATI.has(tipo)) continue;
+    const data = parseDataRevolut(R[iData]); if(!data) continue;
+    let imp = parseFloat((R[iImp]||"0").replace(",","."));
+    const fee = iFee>=0 ? Math.abs(parseFloat((R[iFee]||"0").replace(",","."))||0) : 0;
+    if(isNaN(imp)||imp===0) continue;
+    if(imp<0) imp -= fee;
+    out.push({data, importo:Math.round(imp*100)/100, descrizione:(R[iDesc]||"").trim()});
+  }
+  return out;
+}
+function categorizza(desc, importo){
+  const d=desc.toLowerCase();
+  for(const r of stato.regole) if(d.includes(r.parola.toLowerCase())) return r.categoria;
+  return importo>0 ? "cashback" : "altro";
+}
+/* --- Trade Republic: dal CSV restano solo gli acquisti quotidiani.
+   Esclusi: accrediti/bonifici in entrata, acquisti ETF / piani di risparmio (PAC),
+   interessi, dividendi, vendite, round-up/saveback e ogni movimento in positivo. --- */
+const ESCLUSI_TR = /deposit|accredit|bonifico|ricarica|top.?up|incoming|versament|interess|zins|acquisto|buy\b|kauf|saving|risparmi|\betf\b|piano|execution|esecuzion|vendita|sell\b|verkauf|dividend|cedol|premio|reward|saveback|round.?up|arrotond/i;
+function parseDataFlessibile(s){
+  s=(s||"").trim();
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m=s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);
+  if(m) return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  return null;
+}
+function parseNumeroFlessibile(s){
+  s=(s||"").trim().replace(/[€\s]/g,"");
+  if(!s) return null;
+  if(s.includes(",")&&s.includes(".")){
+    if(s.lastIndexOf(",")>s.lastIndexOf(".")) s=s.replace(/\./g,"").replace(",",".");
+    else s=s.replace(/,/g,"");
+  } else s=s.replace(",",".");
+  const n=parseFloat(s); return isNaN(n)?null:n;
+}
+function leggiEstrattoTR(testo){
+  const prima = (testo.split(/\r?\n/)[0]||"");
+  const delim = prima.split(";").length > prima.split(",").length ? ";" : ",";
+  const righe = parseCsv(testo.replace(/^﻿/,""), delim);
+  if(righe.length<2) throw new Error("File vuoto");
+  const testa = righe[0].map(h=>h.trim().toLowerCase());
+  const idx = re => testa.findIndex(h=>re.test(h));
+  const iData=idx(/data|date|datum/), iTipo=idx(/tipo|type|typ\b/),
+        iDesc=idx(/descri|description|beschreib|note|partner|contropart|oggetto/),
+        iImp=idx(/importo|amount|betrag|valore|value/);
+  if(iData<0||iImp<0)
+    throw new Error("Colonne non riconosciute (servono data e importo). Trovate: "+righe[0].join(", "));
+  const out=[], esclusi=[];
+  for(let r=1;r<righe.length;r++){
+    const R=righe[r];
+    const data=parseDataFlessibile(R[iData]); if(!data) continue;
+    const imp=parseNumeroFlessibile(R[iImp]); if(imp===null||imp===0) continue;
+    const tipo=iTipo>=0?(R[iTipo]||""):"";
+    const desc=((iDesc>=0?R[iDesc]:"")||tipo||"Trade Republic").trim();
+    const mov={data, importo:Math.round(imp*100)/100, descrizione:desc};
+    if(imp>0 || ESCLUSI_TR.test(tipo+" "+desc))
+      esclusi.push({...mov, motivo:motivoEsclusione(imp, tipo+" "+desc)});
+    else out.push(mov);
+  }
+  return {movimenti:out, esclusi};
+}
+function motivoEsclusione(importo, testo){
+  if(importo>0) return "entrata/accredito";
+  if(/\betf\b|saving|risparmi|piano|execution|esecuzion|acquisto|buy\b|kauf/i.test(testo)) return "ETF / PAC";
+  if(/top.?up|ricarica|exchange|cambio|conversione/i.test(testo)) return "ricarica/cambio";
+  return "escluso";
+}
+
+/* ---------- Lettura PDF degli estratti conto ---------- */
+const PDFJS_JS = "lib/pdf.min.js";
+const PDFJS_WORKER = "lib/pdf.worker.min.js";
+let pdfLibPromise=null;
+function caricaPdfJs(){
+  if(pdfLibPromise) return pdfLibPromise;
+  pdfLibPromise = new Promise((ok,ko)=>{
+    if(window.pdfjsLib){ ok(window.pdfjsLib); return; }
+    const s=document.createElement("script");
+    s.src=PDFJS_JS;
+    s.onload=()=>{ try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER; }catch(e){}
+      ok(window.pdfjsLib); };
+    s.onerror=()=>{ pdfLibPromise=null; ko(new Error("lettore PDF non caricato")); };
+    document.head.appendChild(s);
+  });
+  return pdfLibPromise;
+}
+/* Ricostruisce le righe del PDF: raggruppa i frammenti di testo per altezza
+   e ne conserva la posizione orizzontale, che serve a capire in quale
+   colonna (uscite / entrate / saldo) si trova ogni importo. */
+async function righeDaPdf(buffer){
+  const lib = await caricaPdfJs();
+  const doc = await lib.getDocument({data:buffer}).promise;
+  const righe=[];
+  for(let p=1;p<=doc.numPages;p++){
+    const contenuto = await (await doc.getPage(p)).getTextContent();
+    const gruppi=[];
+    for(const it of contenuto.items){
+      if(!it.str || !it.str.trim()) continue;
+      const x=it.transform[4], y=it.transform[5];
+      // alcuni PDF non dichiarano la larghezza: la stimo dal corpo del carattere
+      const corpo = Math.hypot(it.transform[0], it.transform[1]) || 10;
+      const larghezza = it.width>0 ? it.width : it.str.length*corpo*0.5;
+      let g=gruppi.find(g=>Math.abs(g.y-y)<=Math.max(3, corpo*0.4));
+      if(!g){ g={y, pezzi:[]}; gruppi.push(g); }
+      g.pezzi.push({testo:it.str, x, larghezza, corpo});
+    }
+    gruppi.sort((a,b)=>b.y-a.y);
+    for(const g of gruppi){
+      g.pezzi.sort((a,b)=>a.x-b.x);
+      const celle=[];
+      for(const pz of g.pezzi){
+        const ult=celle[celle.length-1];
+        const spazio = ult ? pz.x-(ult.x+ult.larghezza) : Infinity;
+        // unisco i frammenti della stessa cella ("€ 1.234,56" arriva spezzato,
+        // e certi PDF emettono una lettera per volta)
+        if(ult && spazio < pz.corpo*0.4){
+          ult.testo += (spazio > pz.corpo*0.12 ? " " : "")+pz.testo;
+          ult.larghezza = pz.x+pz.larghezza-ult.x;
+        } else celle.push({testo:pz.testo, x:pz.x, larghezza:pz.larghezza, corpo:pz.corpo});
+      }
+      const finali = celle.flatMap(separaImporti);
+      righe.push({celle:finali, testo:finali.map(c=>c.testo).join(" ").replace(/\s+/g," ").trim()});
+    }
+  }
+  return righe;
+}
+/* Certi PDF scrivono importo e saldo in un unico blocco di testo
+   ("189,00 € 1.958,86 €"): lo divido stimando la posizione di ogni parte,
+   altrimenti la riga risulterebbe priva di importi e verrebbe ignorata.
+   Divido solo le celle fatte di soli importi, per non spezzare le descrizioni. */
+const RE_IMPORTO_G=/-?\d{1,3}(?:[.\s]\d{3})*,\d{2}\s*€?|-?\d+,\d{2}\s*€?|-?\d{1,3}(?:,\d{3})*\.\d{2}\s*€?|-?\d+\.\d{2}\s*€?/g;
+function separaImporti(cella){
+  const t=cella.testo;
+  const trovati=[...t.matchAll(RE_IMPORTO_G)];
+  if(trovati.length<2) return [cella];
+  if(t.replace(RE_IMPORTO_G,"").replace(/[\s€]/g,"")!=="") return [cella];
+  return trovati.map(m=>({
+    testo: m[0].trim(),
+    x: cella.x + (m.index/t.length)*cella.larghezza,
+    larghezza: (m[0].length/t.length)*cella.larghezza,
+    corpo: cella.corpo
+  }));
+}
+const MESI_TESTO={gen:1,gennaio:1,jan:1,january:1,januar:1,feb:2,febbraio:2,february:2,februar:2,
+ mar:3,marzo:3,march:3,"mär":3,"märz":3,apr:4,aprile:4,april:4,mag:5,maggio:5,may:5,mai:5,
+ giu:6,giugno:6,jun:6,june:6,juni:6,lug:7,luglio:7,jul:7,july:7,juli:7,ago:8,agosto:8,aug:8,august:8,
+ set:9,sett:9,settembre:9,sep:9,sept:9,september:9,ott:10,ottobre:10,oct:10,october:10,okt:10,oktober:10,
+ nov:11,novembre:11,november:11,dic:12,dicembre:12,dec:12,december:12,dez:12,dezember:12};
+function dataDaTesto(testo, annoContesto){
+  let m;
+  if(m=testo.match(/(\d{4})-(\d{2})-(\d{2})/)) return {iso:`${m[1]}-${m[2]}-${m[3]}`, trovato:m[0]};
+  if(m=testo.match(/(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})/)){
+    const a=m[3].length===2?"20"+m[3]:m[3];
+    return {iso:`${a}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`, trovato:m[0]};
+  }
+  if(m=testo.match(/(\d{1,2})\s*\.?\s*([A-Za-zÀ-ÿ]{3,10})\.?\s*(\d{4})?/)){
+    const mese=MESI_TESTO[m[2].toLowerCase()];
+    const anno=m[3]||annoContesto;
+    if(mese&&anno) return {iso:`${anno}-${String(mese).padStart(2,"0")}-${m[1].padStart(2,"0")}`, trovato:m[0]};
+  }
+  return null;
+}
+function importoDaTesto(s){
+  let t=(s||"").trim().replace(/\s/g,"").replace(/[€$£]|eur|euro/gi,"").replace(/^\+/,"");
+  if(t.endsWith("-")) t="-"+t.slice(0,-1);   // formato contabile "42,50-"
+  if(!/^-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}$|^-?\d+[.,]\d{2}$/.test(t)) return null;
+  return parseNumeroFlessibile(t);
+}
+function unisciCelle(celle, soglia){
+  const out=[];
+  for(const c of celle){
+    const u=out[out.length-1];
+    const spazio = u ? c.x-(u.x+u.larghezza) : Infinity;
+    if(u && spazio<soglia){ u.testo+=" "+c.testo; u.larghezza=c.x+c.larghezza-u.x; }
+    else out.push({testo:c.testo, x:c.x, larghezza:c.larghezza});
+  }
+  return out;
+}
+/* Riconosce la riga di intestazione di una tabella e ne restituisce gli
+   intervalli orizzontali. Intestazioni e numeri possono avere allineamenti
+   diversi, quindi confronto gli intervalli e non i centri.
+   Un estratto puo' contenere piu' tabelle (riepilogo + transazioni): le
+   colonne valgono per le righe che seguono l'intestazione, non per tutto
+   il documento. */
+function intestazioneColonne(r){
+  const reOut=/^(money\s*out|uscite|in\s*uscita|denaro\s*in\s*uscita|ausgang|outgoing|addebit|debit)/i;
+  const reIn=/^(money\s*in|entrate|in\s*entrata|denaro\s*in\s*entrata|eingang|incoming|accredit|credit)/i;
+  const reSaldo=/^(balance|saldo|kontostand)/i;
+  let out=null, inn=null, saldo=null;
+  for(const c of unisciCelle(r.celle, 4)){
+    const t=c.testo.trim(), span={x:c.x, x2:c.x+c.larghezza};
+    if(out===null&&reOut.test(t)) out=span;
+    if(inn===null&&reIn.test(t)) inn=span;
+    if(saldo===null&&reSaldo.test(t)) saldo=span;
+  }
+  return (out&&inn) ? {out, inn, saldo} : null;
+}
+const distanzaSpan=(a,b)=> b ? Math.max(0, Math.max(a.x-b.x2, b.x-a.x2)) : Infinity;
+function annoDalDocumento(righe){
+  for(const r of righe){ const m=r.testo.match(/\b(20\d{2})\b/); if(m) return m[1]; }
+  return String(new Date().getFullYear());
+}
+/* Una transazione puo' occupare piu' righe fisiche: nell'estratto Trade
+   Republic la data e' spezzata su due righe ("01 lug" sopra, "2026" sotto)
+   e gli importi stanno sulla riga in mezzo. Raggruppo quindi le righe:
+   un gruppo comincia dove appare una data e arriva fino alla data seguente. */
+const FINE_TABELLA=/panoramica|conti fiduciari|riepilogo|trade republic bank|www\.|sede centrale|pagina \d|^totale/i;
+function gruppiTransazioni(righe, anno){
+  const gruppi=[]; let corrente=null, col=null;
+  const contieneImporti = r => r.celle.some(c=>importoDaTesto(c.testo)!==null);
+  for(const r of righe){
+    const intest = intestazioneColonne(r);
+    if(intest){ col=intest; corrente=null; continue; }  // vale per le righe seguenti
+    if(FINE_TABELLA.test(r.testo)){ corrente=null; continue; }  // pie' di pagina o nuova sezione
+    const d = dataDaTesto(r.testo.slice(0,20), anno);
+    if(d && r.testo.trim().indexOf(d.trovato)<=1){
+      corrente={data:d.iso, dataTesto:d.trovato, righe:[r], col, coda:0};
+      gruppi.push(corrente);
+    } else if(corrente){
+      // dopo la riga con gli importi la transazione finisce: accolgo al massimo
+      // le due righe di completamento (anno e resto della descrizione)
+      if(corrente.righe.some(contieneImporti) && ++corrente.coda>2){ corrente=null; continue; }
+      corrente.righe.push(r);
+    }
+  }
+  return gruppi;
+}
+function leggiEstrattoPdf(righe, fonte){
+  const anno = annoDalDocumento(righe);
+  const movimenti=[], esclusi=[];
+  let senzaColonne=false, saldoPrec=null;
+  for(const g of gruppiTransazioni(righe, anno)){
+    const numeri=[], parole=[];
+    for(const r of g.righe) for(const c of r.celle){
+      const v=importoDaTesto(c.testo);
+      if(v===null) parole.push(c.testo); else numeri.push({c, v});
+    }
+    if(!numeri.length) continue;
+    let importo=null, saldo=null;
+    if(g.col){
+      for(const o of numeri){
+        const span={x:o.c.x, x2:o.c.x+o.c.larghezza};
+        const dOut=distanzaSpan(span,g.col.out), dIn=distanzaSpan(span,g.col.inn),
+              dSal=distanzaSpan(span,g.col.saldo);
+        const min=Math.min(dOut,dIn,dSal);
+        if(min===dSal){ saldo=o.v; continue; }   // colonna del saldo: non e' un movimento
+        if(importo===null) importo=(min===dOut?-1:1)*Math.abs(o.v);
+      }
+    } else {                    // nessuna intestazione: l'ultimo numero e' il saldo,
+      senzaColonne=true;        // il penultimo il movimento
+      saldo = numeri.length>=2 ? numeri[numeri.length-1].v : null;
+      const v = numeri[Math.max(0, numeri.length-2)].v;
+      if(saldo!==null && saldoPrec!==null && Math.abs(Math.abs(saldo-saldoPrec)-Math.abs(v))<0.02)
+        importo=(saldo>=saldoPrec?1:-1)*Math.abs(v);   // il segno lo dice il saldo
+      else importo=/bonifico|deposit|accredit|entrata|incoming|interess|dividend|cashback|rimbors/i
+        .test(g.righe.map(r=>r.testo).join(" ")) ? Math.abs(v) : -Math.abs(v);
+    }
+    if(saldo!==null) saldoPrec=saldo;
+    if(importo===null || importo===0) continue;
+    let desc = parole.join(" ").replace(g.dataTesto,"")
+      .replace(new RegExp("\\b"+g.data.slice(0,4)+"\\b","g"),"")
+      .replace(/\s+/g," ").trim().slice(0,140);
+    if(!desc) desc=fonte;
+    const mov={data:g.data, importo:Math.round(importo*100)/100, descrizione:desc};
+    const daEscludere = fonte==="Trade Republic"
+      ? (importo>0 || ESCLUSI_TR.test(desc))
+      : /top.?up|ricarica|exchange|cambio valuta/i.test(desc);
+    if(daEscludere) esclusi.push({...mov, motivo:motivoEsclusione(importo, desc)});
+    else movimenti.push(mov);
+  }
+  const avviso = senzaColonne ?
+    "Colonne entrate/uscite non riconosciute: controlla i segni degli importi prima di confermare." : null;
+  return {movimenti, esclusi, avviso};
+}
+
+let importPendenti=[], importFonte="Revolut";
+$("btn-importa").onclick=()=>$("file-csv").click();
+$("btn-importa-tr").onclick=()=>$("file-csv-tr").click();
+$("file-csv").onchange=e=>gestisciFileEstratto(e,"Revolut");
+$("file-csv-tr").onchange=e=>gestisciFileEstratto(e,"Trade Republic");
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function gestisciFileEstratto(e, fonte){
+  const f=e.target.files[0]; if(!f) return; e.target.value="";
+  mostraMsg("Leggo "+f.name+"…");
+  try{
+    const buffer = await f.arrayBuffer();
+    const inizio = String.fromCharCode(...new Uint8Array(buffer.slice(0,5)));
+    let ris, estratte=null;
+    if(inizio.startsWith("%PDF")){          // riconosco il PDF dal contenuto,
+      estratte = await righeDaPdf(buffer);   // non dall'estensione
+      if(!estratte.length) throw new Error("il PDF non contiene testo selezionabile (è una scansione?)");
+      ris = leggiEstrattoPdf(estratte, fonte);
+    } else {
+      const testo = new TextDecoder("utf-8").decode(buffer);
+      estratte = testo.split(/\r?\n/).slice(0,25).map(t=>({testo:t}));
+      ris = fonte==="Revolut" ? {movimenti:leggiEstrattoRevolut(testo), esclusi:[]}
+                              : leggiEstrattoTR(testo);
+    }
+    if(!ris.movimenti.length && !ris.esclusi.length){
+      $("diag-testo").textContent = estratte.slice(0,25).map(r=>r.testo).filter(Boolean).join("\n");
+      $("dlg-diag").showModal();
+      return;
+    }
+    apriAnteprimaImport(ris.movimenti, fonte, ris.esclusi, ris.avviso);
+  }catch(err){ mostraMsg("Errore: "+err.message); }
+}
+function apriAnteprimaImport(movimenti, fonte, esclusi, avviso){
+  importFonte=fonte;
+  $("dlg-import-titolo").textContent="Import estratto "+fonte;
+  const esistenti = new Set(stato.transazioni.filter(t=>t.fonte===fonte)
+    .map(t=>t.data+"|"+t.importo.toFixed(2)+"|"+t.descrizione));
+  let duplicati=0;
+  importPendenti=[];
+  const aggiungi=(m, escluso)=>{
+    const chiave = m.data+"|"+m.importo.toFixed(2)+"|"+m.descrizione;
+    if(esistenti.has(chiave)){ duplicati++; return; }
+    esistenti.add(chiave);
+    importPendenti.push({...m, categoria:categorizza(m.descrizione,m.importo),
+      includi:!escluso, escluso});
+  };
+  movimenti.forEach(m=>aggiungi(m,false));
+  (esclusi||[]).forEach(m=>aggiungi(m,true));   // in fondo, già deselezionati
+  const nEsclusi = importPendenti.filter(m=>m.escluso).length;
+  $("import-riassunto").innerHTML =
+    `${importPendenti.length-nEsclusi} da importare · ${duplicati} già presenti (saltati)`+
+    (nEsclusi?` · ${nEsclusi} esclusi automaticamente (in fondo: spunta per includerli)`:"")+"."+
+    (avviso?`<br><b>${esc(avviso)}</b>`:"");
+  $("import-lista").innerHTML = importPendenti.map((m,i)=>`
+    <div class="anteprima-riga${m.escluso?" escluso":""}">
+      <input type="checkbox" data-i="${i}" ${m.includi?"checked":""}>
+      <div class="info"><div class="d">${esc(m.descrizione||"(senza descrizione)")}</div>
+        <div class="m">${dataIt(m.data)} · ${eur(m.importo)}${
+          m.escluso?` <span class="motivo">${esc(m.motivo||"escluso")}</span>`:""}</div></div>
+      <select data-i="${i}">${cats().map(c=>`<option ${c===m.categoria?"selected":""}>${esc(c)}</option>`).join("")}</select>
+    </div>`).join("") || '<div class="vuoto">Niente di nuovo da importare.</div>';
+  $("import-lista").querySelectorAll("input[type=checkbox]").forEach(el=>
+    el.onchange=()=>importPendenti[+el.dataset.i].includi=el.checked);
+  $("import-lista").querySelectorAll("select").forEach(el=>
+    el.onchange=()=>importPendenti[+el.dataset.i].categoria=el.value);
+  $("import-conferma").disabled = importPendenti.length===0;
+  $("dlg-import").showModal();
+}
+$("import-conferma").onclick=()=>{
+  let n=0;
+  for(const m of importPendenti) if(m.includi){
+    stato.transazioni.push({id:uid(), data:m.data, importo:m.importo,
+      categoria:m.categoria, descrizione:m.descrizione, fonte:importFonte});
+    n++;
+  }
+  salva(); $("dlg-import").close(); renderTutto();
+  mostraMsg(n+" movimenti importati");
+};
+
+/* ============================== VISTA PATRIMONIO ============================== */
+let mesePatr = meseSel;
+function renderPatrimonio(){
+  const righe = calcolaPatrimonio();
+  const mesiConDati = righe.map((r,i)=>i).filter(i=>
+    righe[i].stip!==0 || righe[i].spese!==0 || AD().ovrInv[i]!=null || AD().ovrNonInv[i]!=null);
+  const ultimo = mesiConDati.length ? righe[Math.max(...mesiConDati)] : righe[0];
+  $("patr-totale").textContent = eur(ultimo.totale);
+  $("patr-totale").className="totale-grande";
+  $("patr-dettaglio").textContent =
+    `a fine ${MESI[ultimo.mese].toLowerCase()} · investito ${eur(ultimo.inv)} · liquido ${eur(ultimo.nonInv)}`;
+
+  // grafico
+  const fine = mesiConDati.length ? Math.max(...mesiConDati) : 0;
+  const punti = righe.slice(0, fine+1).map(r=>r.totale);
+  const min=Math.min(...punti), max=Math.max(...punti), span=(max-min)||1;
+  const W=340,H=150,P=12;
+  const xy=punti.map((v,i)=>[
+    P + i*(W-2*P)/Math.max(punti.length-1,1),
+    H-P - (v-min)/span*(H-2*P)
+  ]);
+  const linea = xy.map(p=>p.join(",")).join(" ");
+  $("grafico-patrimonio").innerHTML =
+    `<polyline points="${linea}" fill="none" stroke="#0f766e" stroke-width="2.5" stroke-linejoin="round"/>`+
+    xy.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="#0f766e"><title>${MESI_BREVI[i]}: ${eur(punti[i])}</title></circle>`).join("");
+
+  // iniziali
+  $("inp-inv-iniziale").value = AD().invIniziale ?? "";
+  $("inp-noninv-iniziale").value = AD().nonInvIniziale ?? "";
+
+  // chips mesi
+  $("chips-mesi").innerHTML = MESI_BREVI.map((m,i)=>
+    `<button class="chip ${i===mesePatr?"attivo":""}" data-m="${i}">${m}</button>`).join("");
+  $("chips-mesi").querySelectorAll(".chip").forEach(el=>
+    el.onclick=()=>{ mesePatr=+el.dataset.m; renderPatrimonio(); });
+
+  $("inp-stip1").value = AD().stipendi1[mesePatr] ?? "";
+  $("inp-stip2").value = AD().stipendi2[mesePatr] ?? "";
+  $("inp-stip3").value = AD().altreEntrate[mesePatr] ?? "";
+  $("inp-pac").value = AD().pac[mesePatr] ?? "";
+  $("inp-ovr-inv").value = AD().ovrInv[mesePatr] ?? "";
+  $("inp-ovr-noninv").value = AD().ovrNonInv[mesePatr] ?? "";
+  const r = righe[mesePatr];
+  $("nota-mese-patr").textContent =
+    `${MESI[mesePatr]}: entrate ${eur(r.stip)} · spese ${eur(r.spese)} · guadagno netto ${eur(r.netto)}`+
+    (r.pac ? ` · PAC ${eur(r.pac)} → investito` : "")+
+    ` → patrimonio ${eur(r.totale)}`;
+
+  // tabella annuale
+  let html = "<tr><th>Voce</th>"+MESI_BREVI.map(m=>`<th>${m}</th>`).join("")+"</tr>";
+  const rig = (nome, val, evid) =>
+    `<tr${evid?' class="evidenzia"':''}><td>${nome}</td>`+righe.map(r=>`<td>${eur(val(r))}</td>`).join("")+"</tr>";
+  html += rig("Entrate", r=>r.stip);
+  html += rig("Spese", r=>r.spese);
+  html += rig("Guadagno netto", r=>r.netto);
+  html += rig("PAC versato", r=>r.pac);
+  html += rig("Patrimonio investito", r=>r.inv);
+  html += rig("Patrimonio non investito", r=>r.nonInv);
+  html += rig("Patrimonio totale", r=>r.totale, true);
+  $("tab-annuale").innerHTML = html;
+}
+function collegaCampoPatr(id, setter){
+  $(id).onchange = e=>{ setter(num(e.target.value)); salva(); renderPatrimonio(); };
+}
+collegaCampoPatr("inp-inv-iniziale", v=>AD().invIniziale=v??0);
+collegaCampoPatr("inp-noninv-iniziale", v=>AD().nonInvIniziale=v??0);
+collegaCampoPatr("inp-stip1", v=>AD().stipendi1[mesePatr]=v);
+collegaCampoPatr("inp-stip2", v=>AD().stipendi2[mesePatr]=v);
+collegaCampoPatr("inp-stip3", v=>AD().altreEntrate[mesePatr]=v);
+collegaCampoPatr("inp-pac", v=>AD().pac[mesePatr]=v);
+collegaCampoPatr("inp-ovr-inv", v=>AD().ovrInv[mesePatr]=v);
+collegaCampoPatr("inp-ovr-noninv", v=>AD().ovrNonInv[mesePatr]=v);
+
+/* ============================== VISTA ALTRO ============================== */
+function renderRegole(){
+  $("lista-regole").innerHTML = stato.regole.map((r,i)=>`
+    <div class="regola"><span>«${r.parola}» → <b>${r.categoria}</b></span>
+      <button data-i="${i}">✕</button></div>`).join("");
+  $("lista-regole").querySelectorAll("button").forEach(el=>
+    el.onclick=()=>{ stato.regole.splice(+el.dataset.i,1); salva(); renderRegole(); });
+}
+$("diag-copia").onclick=async()=>{
+  try{ await navigator.clipboard.writeText($("diag-testo").textContent); mostraMsg("Righe copiate"); }
+  catch(e){ mostraMsg("Copia non riuscita: selezionale a mano"); }
+};
+$("btn-regola-add").onclick=()=>{
+  const p=$("inp-regola-parola").value.trim();
+  if(!p){ mostraMsg("Scrivi una parola chiave"); return; }
+  stato.regole.unshift({parola:p, categoria:$("inp-regola-cat").value});
+  $("inp-regola-parola").value="";
+  salva(); renderRegole(); mostraMsg("Regola aggiunta");
+};
+
+/* --- backup JSON --- */
+function scarica(nome, blob){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=nome; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+}
+$("btn-backup").onclick=()=>scarica("monitoraggio-spese-backup.json",
+  new Blob([JSON.stringify(stato,null,1)],{type:"application/json"}));
+$("btn-ripristina").onclick=()=>$("file-json").click();
+$("file-json").onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return; e.target.value="";
+  try{
+    const s=JSON.parse(await f.text());
+    if(!Array.isArray(s.transazioni)) throw new Error("file non valido");
+    stato=migra(s); salva(); renderTutto(); mostraMsg("Backup ripristinato");
+  }catch(err){ mostraMsg("Errore: "+err.message); }
+};
+$("btn-azzera").onclick=()=>{
+  if(confirm("Cancellare TUTTI i dati dell'app? (le regole tornano a quelle predefinite)")){
+    stato=statoIniziale(); stato.transazioni=[]; salva(); renderTutto(); mostraMsg("Dati azzerati");
+  }
+};
+
+/* --- Excel --- */
+function richiedeXLSX(){
+  if(typeof XLSX==="undefined"){ mostraMsg("Libreria Excel non ancora caricata: riprova tra un istante"); return false; }
+  return true;
+}
+$("btn-esporta-xlsx").onclick=()=>{
+  if(!richiedeXLSX()) return;
+  const wb = XLSX.utils.book_new();
+
+  /* --- foglio Monitoraggio Spese --- */
+  const ws = {};
+  const set=(cella,v)=>{ ws[cella]=v; };
+  set("A1",{t:"s",v:"REGISTRO SPESE"});
+  set("F1",{t:"s",v:"RIEPILOGO MENSILE PER CATEGORIA"});
+  set("A3",{t:"s",v:"Saldo iniziale (€)"});
+  set("A4",{t:"s",v:"Saldo attuale (€)"});
+  set("A5",{t:"s",v:"Anno di riferimento"}); set("B5",{t:"n",v:stato.anno});
+  set("F3",{t:"s",v:"Categoria"});
+  MESI_BREVI.forEach((m,i)=>set(XLSX.utils.encode_cell({r:2,c:6+i}),{t:"s",v:m}));
+  set("S3",{t:"s",v:"Totale"});
+  const CATS=cats();
+  const rTot=4+CATS.length; // riga "Totale mese" (dipende da quante categorie ci sono)
+  CATS.forEach((cat,i)=>{
+    const r=4+i;
+    set("F"+r,{t:"s",v:cat});
+    for(let c=0;c<12;c++){
+      set(XLSX.utils.encode_cell({r:r-1,c:6+c}),{t:"n",
+        f:`SUMIFS($B:$B,$C:$C,$F${r},$A:$A,">="&DATE($B$5,COLUMN()-6,1),$A:$A,"<="&EOMONTH(DATE($B$5,COLUMN()-6,1),0))`});
+    }
+    set("S"+r,{t:"n",f:`SUM(G${r}:R${r})`});
+  });
+  set("F"+rTot,{t:"s",v:"Totale mese"});
+  for(let c=0;c<12;c++){
+    const col=XLSX.utils.encode_col(6+c);
+    set(col+rTot,{t:"n",f:`SUM(${col}4:${col}${rTot-1})`});
+  }
+  set("S"+rTot,{t:"n",f:`SUM(G${rTot}:R${rTot})`});
+  const ordinate=[...stato.transazioni].sort((a,b)=>a.data.localeCompare(b.data));
+  ordinate.forEach((t,i)=>{
+    const r=8+i;
+    // seriale Excel (giorni dal 30/12/1899): immune ai fusi orari
+    const [aa,mm,gg]=t.data.split("-").map(Number);
+    const seriale=(Date.UTC(aa,mm-1,gg)-Date.UTC(1899,11,30))/86400000;
+    set("A"+r,{t:"n",v:seriale, z:"dd/mm/yyyy"});
+    set("B"+r,{t:"n",v:t.importo, z:"#,##0.00"});
+    set("C"+r,{t:"s",v:t.categoria});
+    if(t.descrizione) set("D"+r,{t:"s",v:t.descrizione});
+    if(t.fonte && t.fonte!=="manuale") set("E"+r,{t:"s",v:t.fonte});
+  });
+  ws["!ref"]="A1:S"+Math.max(rTot+1, 8+ordinate.length);
+  ws["!cols"]=[{wch:12},{wch:10},{wch:14},{wch:28},{wch:9},{wch:16},
+    ...Array(12).fill({wch:9}),{wch:11}];
+  XLSX.utils.book_append_sheet(wb, ws, "Monitoraggio Spese");
+
+  /* --- foglio Stipendi e Guadagno --- */
+  const w2={};
+  const s2=(c,v)=>{ w2[c]=v; };
+  s2("A1",{t:"s",v:"ENTRATE, GUADAGNO E PATRIMONIO"});
+  s2("A2",{t:"s",v:"Anno di riferimento"}); s2("B2",{t:"n",f:"'Monitoraggio Spese'!$B$5"});
+  s2("A3",{t:"s",v:"Patrimonio investito iniziale (€)"}); s2("B3",{t:"n",v:AD().invIniziale||0});
+  s2("A4",{t:"s",v:"Patrimonio non investito iniziale (€)"}); s2("B4",{t:"n",v:AD().nonInvIniziale||0});
+  s2("A6",{t:"s",v:"Voce"});
+  MESI_BREVI.forEach((m,i)=>s2(XLSX.utils.encode_cell({r:5,c:1+i}),{t:"s",v:m}));
+  s2("N6",{t:"s",v:"Totale anno"});
+  s2("A7",{t:"s",v:"Stipendio specializzazione"});
+  s2("A8",{t:"s",v:"Stipendio guardia medica"});
+  s2("A9",{t:"s",v:"Altre entrate"});
+  for(let c=0;c<12;c++){
+    const col=XLSX.utils.encode_col(1+c);
+    if(AD().stipendi1[c]!=null) s2(col+"7",{t:"n",v:AD().stipendi1[c]});
+    if(AD().stipendi2[c]!=null) s2(col+"8",{t:"n",v:AD().stipendi2[c]});
+    if(AD().altreEntrate[c]!=null) s2(col+"9",{t:"n",v:AD().altreEntrate[c]});
+  }
+  s2("N7",{t:"n",f:"SUM(B7:M7)"}); s2("N8",{t:"n",f:"SUM(B8:M8)"}); s2("N9",{t:"n",f:"SUM(B9:M9)"});
+  s2("A10",{t:"s",v:"Totale entrate"});
+  s2("A11",{t:"s",v:"Totale spese mese (da Foglio Spese)"});
+  s2("A12",{t:"s",v:"Guadagno netto del mese"});
+  s2("A13",{t:"s",v:"PAC versato"});
+  s2("A14",{t:"s",v:"Patrimonio investito"});
+  s2("A15",{t:"s",v:"Patrimonio non investito"});
+  s2("A16",{t:"s",v:"Patrimonio totale"});
+  const iInvest=CATS.indexOf("investimenti");
+  const rInvest=iInvest>=0 ? 4+iInvest : null; // riga della categoria "investimenti" nel foglio spese
+  for(let c=0;c<12;c++){
+    const col=XLSX.utils.encode_col(1+c);
+    const colSp=XLSX.utils.encode_col(6+c); // G..R
+    const prec=XLSX.utils.encode_col(c);    // colonna precedente
+    s2(col+"10",{t:"n",f:`${col}7+${col}8+${col}9`});
+    s2(col+"11",{t:"n",f:`'Monitoraggio Spese'!${colSp}${rTot}`});
+    s2(col+"12",{t:"n",f:`${col}10+${col}11`});
+    if(AD().pac[c]!=null) s2(col+"13",{t:"n",v:AD().pac[c]});
+    // il PAC entra nell'investito e esce dal non investito
+    const base = c===0 ? "$B$3" : `${prec}14`;
+    if(AD().ovrInv[c]!=null) s2(col+"14",{t:"n",v:AD().ovrInv[c]});
+    else s2(col+"14",{t:"n",f: (rInvest ? `${base}-'Monitoraggio Spese'!${colSp}${rInvest}` : base)+`+${col}13`});
+    if(AD().ovrNonInv[c]!=null) s2(col+"15",{t:"n",v:AD().ovrNonInv[c]});
+    else s2(col+"15",{t:"n",f: c===0?`$B$4+B12-B13`:`${prec}15+${col}12-${col}13`});
+    s2(col+"16",{t:"n",f:`${col}14+${col}15`});
+  }
+  s2("N10",{t:"n",f:"SUM(B10:M10)"}); s2("N11",{t:"n",f:"SUM(B11:M11)"});
+  s2("N12",{t:"n",f:"SUM(B12:M12)"}); s2("N13",{t:"n",f:"SUM(B13:M13)"});
+  s2("N14",{t:"n",f:"M14"}); s2("N15",{t:"n",f:"M15"}); s2("N16",{t:"n",f:"M16"});
+  w2["!ref"]="A1:N16";
+  w2["!cols"]=[{wch:30},...Array(12).fill({wch:10}),{wch:12}];
+  XLSX.utils.book_append_sheet(wb, w2, "Stipendi e Guadagno");
+
+  const dati = XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  scarica("Monitoraggio_Spese.xlsx", new Blob([dati],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+  mostraMsg("Excel scaricato");
+};
+
+$("btn-importa-xlsx").onclick=()=>$("file-xlsx").click();
+$("file-xlsx").onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return; e.target.value="";
+  if(!richiedeXLSX()) return;
+  if(!confirm("Sostituire i dati dell'app con quelli del file Excel?")) return;
+  try{
+    const wb=XLSX.read(await f.arrayBuffer());
+    const ws=wb.Sheets["Monitoraggio Spese"];
+    if(!ws) throw new Error('foglio "Monitoraggio Spese" non trovato');
+    const nuovo=statoIniziale(); nuovo.transazioni=[]; nuovo.regole=stato.regole;
+    const cella=(c)=>ws[c]?ws[c].v:null;
+    nuovo.anno = Math.round(cella("B5"))||new Date().getFullYear();
+    nuovo.anni = { [nuovo.anno]: annoVuoto() };
+    const ad = nuovo.anni[nuovo.anno];
+    // categorie dal riepilogo (colonna F, da F4 fino a "Totale mese")
+    const catFile=[];
+    for(let r=4;r<200;r++){
+      const v=ws["F"+r];
+      if(!v||typeof v.v!=="string"||v.v.trim()===""||v.v.trim()==="Totale mese") break;
+      catFile.push(v.v.trim());
+    }
+    if(catFile.length){
+      ["altro","cashback"].forEach(c=>{ if(!catFile.includes(c)) catFile.push(c); });
+      nuovo.categorie=catFile;
+    }
+    for(let r=8;r<=2000;r++){
+      const d=ws["A"+r], imp=ws["B"+r];
+      if(!d||!imp) continue;
+      let iso=null;
+      if(typeof d.v==="number") iso=new Date(Date.UTC(1899,11,30)+d.v*86400000).toISOString().slice(0,10);
+      else if(d.v instanceof Date) iso=`${d.v.getFullYear()}-${String(d.v.getMonth()+1).padStart(2,"0")}-${String(d.v.getDate()).padStart(2,"0")}`;
+      else if(typeof d.v==="string") iso=parseDataRevolut(d.v);
+      if(!iso) continue;
+      nuovo.transazioni.push({id:uid()+r, data:iso, importo:+imp.v,
+        categoria:(ws["C"+r]&&nuovo.categorie.includes(String(ws["C"+r].v).trim()))?String(ws["C"+r].v).trim():"altro",
+        descrizione:ws["D"+r]?String(ws["D"+r].v):"",
+        fonte:(ws["E"+r]&&String(ws["E"+r].v).trim())?String(ws["E"+r].v).trim():"manuale"});
+    }
+    const w2=wb.Sheets["Stipendi e Guadagno"];
+    if(w2){
+      const v=(c)=>w2[c]&&typeof w2[c].v==="number"?w2[c].v:null;
+      ad.invIniziale=v("B3")??0; ad.nonInvIniziale=v("B4")??0;
+      // trova le righe dalle etichette, così funziona sia col vecchio layout che col nuovo
+      const rigaCon=(testo)=>{ for(let r=6;r<=30;r++){ const c=w2["A"+r];
+        if(c&&String(c.v).trim().toLowerCase().startsWith(testo)) return r; } return null; };
+      const r1=rigaCon("stipendio specializzazione"), r2=rigaCon("stipendio guardia"),
+            r3=rigaCon("altre entrate"), rP=rigaCon("pac"),
+            rI=rigaCon("patrimonio investito"), rN=rigaCon("patrimonio non investito");
+      for(let c=0;c<12;c++){
+        const col=XLSX.utils.encode_col(1+c);
+        if(r1) ad.stipendi1[c]=v(col+r1);
+        if(r2) ad.stipendi2[c]=v(col+r2);
+        if(r3) ad.altreEntrate[c]=v(col+r3);
+        if(rP) ad.pac[c]=v(col+rP);
+        // celle patrimonio senza formula = valori inseriti a mano (override)
+        const cI=rI?w2[col+rI]:null, cN=rN?w2[col+rN]:null;
+        if(cI&&cI.f===undefined&&typeof cI.v==="number") ad.ovrInv[c]=cI.v;
+        if(cN&&cN.f===undefined&&typeof cN.v==="number") ad.ovrNonInv[c]=cN.v;
+      }
+    }
+    stato=nuovo; salva(); renderTutto();
+    mostraMsg(nuovo.transazioni.length+" movimenti caricati dal file");
+  }catch(err){ mostraMsg("Errore: "+err.message); }
+};
+
+/* ============================== NAVIGAZIONE ============================== */
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("attivo",x===b));
+  document.querySelectorAll(".vista").forEach(v=>v.classList.toggle("attiva",v.id===b.dataset.vista));
+  renderTutto();
+});
+document.querySelectorAll("dialog [data-chiudi]").forEach(b=>b.onclick=()=>b.closest("dialog").close());
+
+function popolaSelectCategorie(){
+  const opt=cats().map(c=>`<option>${c}</option>`).join("");
+  $("mov-categoria").innerHTML=opt+'<option value="__nuova__">➕ Nuova categoria…</option>';
+  $("inp-regola-cat").innerHTML=opt;
+}
+let catPrec=null;
+$("mov-categoria").onchange=e=>{
+  if(e.target.value!=="__nuova__"){ catPrec=e.target.value; return; }
+  const nome=(prompt("Nome della nuova categoria:")||"").trim();
+  if(!nome){ e.target.value=catPrec||cats()[0]; return; }
+  if(!cats().includes(nome)){
+    // la inserisco prima di "altro" così resta tra le categorie di spesa
+    const i=stato.categorie.indexOf("altro");
+    if(i>=0) stato.categorie.splice(i,0,nome); else stato.categorie.push(nome);
+    salva(); popolaSelectCategorie();
+  }
+  e.target.value=nome; catPrec=nome;
+};
+function renderTutto(){ popolaSelectCategorie(); renderSpese(); renderPatrimonio(); renderRegole(); }
+
+popolaSelectCategorie();
+renderTutto();
+salva();
+
+if("serviceWorker" in navigator && location.protocol.startsWith("http"))
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
