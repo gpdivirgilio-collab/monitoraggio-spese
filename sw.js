@@ -1,4 +1,4 @@
-const CACHE = "monitoraggio-spese-v9";
+const CACHE = "monitoraggio-spese-v10";
 const RISORSE = [
   "./",
   "index.html",

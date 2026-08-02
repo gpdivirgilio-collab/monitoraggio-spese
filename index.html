@@ -55,6 +55,7 @@ main{max-width:640px; margin:0 auto; padding:12px 12px calc(96px + env(safe-area
 .mov .importo.neg{color:var(--testo)}
 .mov .importo.pos{color:var(--verde-ok)}
 .vuoto{text-align:center; color:var(--muto); padding:30px 10px; font-size:14px}
+.card.promemoria{background:#fffbeb; border:1px solid #fcd34d; font-size:14px; line-height:1.45}
 .griglia2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
 label.campo{display:block; font-size:13px; color:var(--muto); margin-bottom:10px}
 label.campo span{display:block; margin-bottom:4px}
@@ -111,6 +112,10 @@ svg.grafico{width:100%; height:150px; display:block}
 <main>
   <!-- ============ VISTA SPESE ============ -->
   <section class="vista attiva" id="vista-spese">
+    <div class="card promemoria" id="avviso-backup" style="display:none">
+      <div id="avviso-backup-testo"></div>
+      <button class="btn primario" style="width:100%; margin-top:10px" id="avviso-backup-btn">📤 Invia backup ora</button>
+    </div>
     <div class="selettore-mese">
       <button id="mese-prec">‹</button>
       <div class="titolo" id="mese-titolo"></div>
@@ -219,13 +224,18 @@ svg.grafico{width:100%; height:150px; display:block}
 
     <div class="card">
       <h2>Backup</h2>
-      <div class="azioni" style="margin-bottom:0">
-        <button class="btn secondario" id="btn-backup">Salva backup</button>
-        <button class="btn secondario" id="btn-ripristina">Ripristina backup</button>
-        <input type="file" id="file-json" accept=".json,application/json" hidden>
+      <div class="azioni">
+        <button class="btn primario" id="btn-condividi">📤 Invia backup</button>
+        <button class="btn secondario" id="btn-backup">⬇ Salva sul telefono</button>
+        <button class="btn secondario" id="btn-ripristina">⬆ Ripristina backup</button>
+        <input type="file" id="file-json" hidden>
       </div>
-      <div class="nota">I dati vivono solo su questo dispositivo (nessun cloud).
-        Salva ogni tanto un backup, o scarica l'Excel aggiornato.</div>
+      <div class="sotto" id="stato-backup"></div>
+      <div class="nota"><b>«Invia backup» è quello che ti salva se perdi il telefono</b>:
+        manda il file dove vuoi tu (Drive, email, WhatsApp…), così esce da questo
+        dispositivo. «Salva sul telefono» lo mette solo nei Download: se il telefono
+        si rompe, si perde anche il backup.<br>
+        Per rimettere i dati su un telefono nuovo: apri l'app, poi «Ripristina backup».</div>
       <button class="btn pericolo" style="width:100%; margin-top:12px" id="btn-azzera">Azzera tutti i dati</button>
     </div>
   </section>
@@ -1000,8 +1010,57 @@ function scarica(nome, blob){
   a.href=URL.createObjectURL(blob); a.download=nome; a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),3000);
 }
-$("btn-backup").onclick=()=>scarica("monitoraggio-spese-backup.json",
-  new Blob([JSON.stringify(stato,null,1)],{type:"application/json"}));
+/* --- backup: il file deve poter USCIRE dal telefono, altrimenti non protegge
+   dalla perdita del dispositivo --- */
+const GIORNI_PROMEMORIA = 30;
+function fileBackup(){
+  const nome = `monitoraggio-spese-${oggiIso()}.json`;
+  return new File([JSON.stringify(stato,null,1)], nome, {type:"application/json"});
+}
+function registraBackup(){
+  stato.ultimoBackup = new Date().toISOString();
+  salva(); renderStatoBackup(); renderAvvisoBackup();
+}
+function giorniDaUltimoBackup(){
+  if(!stato.ultimoBackup) return null;
+  return Math.floor((Date.now()-new Date(stato.ultimoBackup).getTime())/86400000);
+}
+async function condividiBackup(){
+  const f = fileBackup();
+  if(navigator.canShare && navigator.canShare({files:[f]})){
+    try{
+      await navigator.share({files:[f], title:"Backup Monitoraggio Spese"});
+      registraBackup(); mostraMsg("Backup inviato");
+      return;
+    }catch(e){
+      if(e && e.name==="AbortError") return;   // l'utente ha annullato: non registro nulla
+    }
+  }
+  scarica(f.name, f);   // niente condivisione (di solito su PC): salvo il file
+  registraBackup();
+  mostraMsg("Backup salvato: mettilo al sicuro fuori dal telefono");
+}
+function renderStatoBackup(){
+  const g = giorniDaUltimoBackup();
+  const el = $("stato-backup");
+  if(!el) return;
+  el.textContent = g===null ? "Nessun backup ancora eseguito."
+    : g===0 ? "Ultimo backup: oggi."
+    : `Ultimo backup: ${dataIt(stato.ultimoBackup.slice(0,10))} (${g} giorni fa).`;
+}
+function renderAvvisoBackup(){
+  const el = $("avviso-backup");
+  if(!el) return;
+  const g = giorniDaUltimoBackup();
+  const serve = stato.transazioni.length>0 && (g===null || g>=GIORNI_PROMEMORIA);
+  el.style.display = serve ? "block" : "none";
+  if(serve) $("avviso-backup-testo").innerHTML = g===null
+    ? "<b>Non hai mai salvato un backup.</b> Se perdi il telefono perdi tutti i movimenti: mandane una copia a te stesso."
+    : `<b>Ultimo backup ${g} giorni fa.</b> Conviene mandarne una copia aggiornata fuori dal telefono.`;
+}
+$("btn-condividi").onclick=condividiBackup;
+$("avviso-backup-btn").onclick=condividiBackup;
+$("btn-backup").onclick=()=>{ const f=fileBackup(); scarica(f.name,f); registraBackup(); };
 $("btn-ripristina").onclick=()=>$("file-json").click();
 $("file-json").onchange=async e=>{
   const f=e.target.files[0]; if(!f) return; e.target.value="";
@@ -1219,7 +1278,12 @@ $("mov-categoria").onchange=e=>{
   }
   e.target.value=nome; catPrec=nome;
 };
-function renderTutto(){ popolaSelectCategorie(); renderSpese(); renderPatrimonio(); renderRegole(); }
+function renderTutto(){ popolaSelectCategorie(); renderSpese(); renderPatrimonio(); renderRegole();
+  renderStatoBackup(); renderAvvisoBackup(); }
+
+/* Chiede al browser di non cancellare i dati per liberare spazio */
+if(navigator.storage && navigator.storage.persist)
+  navigator.storage.persist().catch(()=>{});
 
 popolaSelectCategorie();
 renderTutto();
