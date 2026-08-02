@@ -96,6 +96,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 .toggle button.attivo{background:var(--verde); color:#fff}
 svg.grafico{width:100%; height:150px; display:block}
 .msg{position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:#111827; color:#fff; padding:10px 18px; border-radius:999px; font-size:14px; z-index:50; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90vw; text-align:center}
+.msg.lungo{border-radius:14px; line-height:1.45; text-align:left; padding:12px 16px}
 .msg.vis{opacity:1}
 </style>
 </head>
@@ -409,8 +410,11 @@ function num(v){ if(v===null||v===undefined||v==="") return null;
 function dataIt(iso){ const [a,m,g]=iso.split("-"); return `${g}/${m}/${a}`; }
 function oggiIso(){ return new Date().toISOString().slice(0,10); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
-function mostraMsg(t){ const el=document.getElementById("msg"); el.textContent=t; el.classList.add("vis");
-  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove("vis"),2600); }
+function mostraMsg(t){ const el=document.getElementById("msg"); el.textContent=t;
+  el.classList.toggle("lungo", t.length>60);
+  el.classList.add("vis");
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove("vis"), t.length>60 ? 12000 : 2600); }
 const $ = id => document.getElementById(id);
 
 /* ============================== CALCOLI ============================== */
@@ -1098,6 +1102,11 @@ function tokenDrive(silenzioso){
       client_id: stato.driveClientId.trim(),
       scope: DRIVE_SCOPE,
       callback: r=>{
+        if(r.error==="access_denied") return ko(new Error(
+          "Google ha rifiutato l'accesso. Di solito significa che il progetto è ancora "+
+          "in modalità Test: su console.cloud.google.com apri «Google Auth Platform → "+
+          "Destinatari» e premi «Pubblica app», oppure aggiungi il tuo indirizzo Gmail "+
+          "tra gli utenti di test."));
         if(r.error) return ko(new Error(r.error_description||r.error));
         tokenDriveVal=r.access_token; tokenScade=Date.now()+(+r.expires_in||3600)*1000;
         ok(tokenDriveVal);
@@ -1131,7 +1140,22 @@ async function caricaSuDrive(silenzioso){
     {method:id?"PATCH":"POST",
      headers:{...intestazioni, "Content-Type":`multipart/related; boundary=${confine}`},
      body:corpo});
-  if(!risposta.ok) throw new Error("Google Drive ha risposto "+risposta.status);
+  if(!risposta.ok){
+    let dettaglio="";
+    try{ const e=(await risposta.json()).error||{};
+      dettaglio = e.message || "";
+      const motivo = (e.errors && e.errors[0] && e.errors[0].reason) || e.status || "";
+      if(/SERVICE_DISABLED|accessNotConfigured/i.test(motivo+dettaglio))
+        dettaglio = "la Google Drive API non è abilitata nel progetto: su "+
+          "console.cloud.google.com apri «API e servizi → Libreria», cerca "+
+          "«Google Drive API» e premi Abilita (poi attendi un minuto).";
+      else if(risposta.status===403)
+        dettaglio = dettaglio || "permesso negato da Google Drive.";
+      else if(risposta.status===401){ tokenDriveVal=null;
+        dettaglio = "autorizzazione scaduta: premi di nuovo «Collega e salva ora»."; }
+    }catch(e){}
+    throw new Error(dettaglio || ("Google Drive ha risposto "+risposta.status));
+  }
   return f.name;
 }
 function renderDrive(){

@@ -18,12 +18,18 @@ codice con cui Google riconosce l'app come autorizzata dal tuo account.
    Aspetta che venga creato e selezionalo.
 3. Menù ☰ → **API e servizi** → **Libreria**. Cerca **Google Drive API** e premi
    **Abilita**.
-4. Menù ☰ → **API e servizi** → **Schermata consenso OAuth** (in alcune versioni
-   si chiama *Google Auth Platform*):
+4. Menù ☰ → **API e servizi** → **Schermata consenso OAuth** (nelle versioni
+   recenti si chiama *Google Auth Platform*):
    - tipo di utente: **Esterno**
    - nome app: `Monitoraggio Spese`, email di assistenza: la tua
-   - salva, poi **pubblica l'app** (con questo permesso non serve alcuna
-     verifica da parte di Google)
+   - poi apri la sezione **Destinatari** (*Audience*) e premi **Pubblica app**.
+
+   > **Questo passaggio è obbligatorio.** Se il progetto resta in stato *Test*,
+   > Google risponde `403 access_denied` a chiunque non sia elencato fra gli
+   > utenti di test. In alternativa alla pubblicazione puoi restare in Test e
+   > aggiungere il tuo indirizzo Gmail in **Utenti di test**.
+   > Con il solo permesso `drive.file` la pubblicazione **non richiede**
+   > la verifica di Google.
 5. Menù ☰ → **API e servizi** → **Credenziali** → **Crea credenziali** →
    **ID client OAuth**:
    - tipo: **Applicazione web**
