@@ -238,6 +238,21 @@ svg.grafico{width:100%; height:150px; display:block}
         Per rimettere i dati su un telefono nuovo: apri l'app, poi «Ripristina backup».</div>
       <button class="btn pericolo" style="width:100%; margin-top:12px" id="btn-azzera">Azzera tutti i dati</button>
     </div>
+
+    <div class="card">
+      <h2>Backup automatico su Google Drive</h2>
+      <div class="sotto" id="drive-stato"></div>
+      <label class="campo" style="margin-top:10px"><span>ID client Google (si incolla una volta sola)</span>
+        <input type="text" id="inp-drive-id" placeholder="123456-abc.apps.googleusercontent.com"></label>
+      <div class="azioni" style="margin-bottom:0">
+        <button class="btn primario" id="btn-drive-collega">Collega e salva ora</button>
+        <button class="btn secondario" id="btn-drive-scollega">Scollega</button>
+      </div>
+      <div class="nota">Una volta collegato, il backup si carica da solo sul tuo Drive
+        quando apri l'app ed è passato un mese dall'ultimo. L'app usa il permesso più
+        stretto possibile: <b>vede solo i file che crea lei</b>, non il resto del Drive.
+        Finché non lo colleghi, l'app non contatta nessun server esterno.</div>
+    </div>
   </section>
 </main>
 
@@ -1058,6 +1073,100 @@ function renderAvvisoBackup(){
     ? "<b>Non hai mai salvato un backup.</b> Se perdi il telefono perdi tutti i movimenti: mandane una copia a te stesso."
     : `<b>Ultimo backup ${g} giorni fa.</b> Conviene mandarne una copia aggiornata fuori dal telefono.`;
 }
+/* --- Google Drive: caricato SOLO se l'utente collega il proprio account,
+   con il permesso drive.file (l'app vede solo i file che crea lei) --- */
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const GIS_SRC = "https://accounts.google.com/gsi/client";
+let gisPromise=null, tokenDriveVal=null, tokenScade=0;
+function caricaGis(){
+  if(gisPromise) return gisPromise;
+  gisPromise = new Promise((ok,ko)=>{
+    if(window.google && google.accounts) return ok();
+    const s=document.createElement("script");
+    s.src=GIS_SRC; s.async=true;
+    s.onload=()=>ok();
+    s.onerror=()=>{ gisPromise=null; ko(new Error("impossibile contattare Google (sei offline?)")); };
+    document.head.appendChild(s);
+  });
+  return gisPromise;
+}
+function tokenDrive(silenzioso){
+  if(tokenDriveVal && Date.now() < tokenScade-60000) return Promise.resolve(tokenDriveVal);
+  if(!stato.driveClientId) return Promise.reject(new Error("Drive non configurato"));
+  return caricaGis().then(()=> new Promise((ok,ko)=>{
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: stato.driveClientId.trim(),
+      scope: DRIVE_SCOPE,
+      callback: r=>{
+        if(r.error) return ko(new Error(r.error_description||r.error));
+        tokenDriveVal=r.access_token; tokenScade=Date.now()+(+r.expires_in||3600)*1000;
+        ok(tokenDriveVal);
+      },
+      error_callback: e=>ko(new Error((e&&e.type)==="popup_closed" ? "accesso annullato" : "accesso a Google non riuscito"))
+    });
+    // silenzioso: riusa la sessione Google già attiva, senza finestre
+    client.requestAccessToken(silenzioso ? {prompt:""} : {});
+  }));
+}
+async function caricaSuDrive(silenzioso){
+  const token = await tokenDrive(silenzioso);
+  const f = fileBackup();
+  const contenuto = await f.text();
+  const intestazioni = {Authorization:"Bearer "+token};
+  // cerco se esiste già il backup di oggi (con drive.file vedo solo i miei file)
+  const q = encodeURIComponent(`name='${f.name}' and trashed=false`);
+  let id=null;
+  try{
+    const ric = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`,
+      {headers:intestazioni}).then(r=>r.json());
+    id = ric.files && ric.files[0] && ric.files[0].id;
+  }catch(e){}
+  const confine="confine"+Date.now();
+  const corpo =
+    `--${confine}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`+
+    JSON.stringify({name:f.name, mimeType:"application/json"})+`\r\n`+
+    `--${confine}\r\nContent-Type: application/json\r\n\r\n${contenuto}\r\n--${confine}--`;
+  const risposta = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files${id?"/"+id:""}?uploadType=multipart`,
+    {method:id?"PATCH":"POST",
+     headers:{...intestazioni, "Content-Type":`multipart/related; boundary=${confine}`},
+     body:corpo});
+  if(!risposta.ok) throw new Error("Google Drive ha risposto "+risposta.status);
+  return f.name;
+}
+function renderDrive(){
+  const el=$("drive-stato"); if(!el) return;
+  $("inp-drive-id").value = stato.driveClientId || "";
+  el.textContent = !stato.driveClientId ? "Non collegato."
+    : stato.driveUltimo ? `Collegato. Ultimo caricamento su Drive: ${dataIt(stato.driveUltimo.slice(0,10))}.`
+    : "ID client inserito, ma nessun caricamento riuscito finora.";
+}
+$("btn-drive-collega").onclick=async()=>{
+  const id=$("inp-drive-id").value.trim();
+  if(!id.endsWith(".apps.googleusercontent.com")){
+    mostraMsg("L'ID client deve finire con .apps.googleusercontent.com"); return; }
+  stato.driveClientId=id; salva();
+  mostraMsg("Collegamento a Google in corso…");
+  try{
+    const nome = await caricaSuDrive(false);
+    stato.driveUltimo=new Date().toISOString(); registraBackup(); renderDrive();
+    mostraMsg("Salvato su Drive: "+nome);
+  }catch(e){ mostraMsg("Errore: "+e.message); renderDrive(); }
+};
+$("btn-drive-scollega").onclick=()=>{
+  stato.driveClientId=null; stato.driveUltimo=null; tokenDriveVal=null;
+  salva(); renderDrive(); mostraMsg("Drive scollegato");
+};
+async function backupAutomaticoDrive(){
+  if(!stato.driveClientId || !stato.transazioni.length) return;
+  const g=giorniDaUltimoBackup();
+  if(g!==null && g<GIORNI_PROMEMORIA) return;
+  try{
+    const nome = await caricaSuDrive(true);      // senza finestre: se serve il consenso, rinuncio
+    stato.driveUltimo=new Date().toISOString(); registraBackup(); renderDrive();
+    mostraMsg("Backup mensile salvato su Drive");
+  }catch(e){ /* resta il promemoria a schermo */ }
+}
 $("btn-condividi").onclick=condividiBackup;
 $("avviso-backup-btn").onclick=condividiBackup;
 $("btn-backup").onclick=()=>{ const f=fileBackup(); scarica(f.name,f); registraBackup(); };
@@ -1279,7 +1388,7 @@ $("mov-categoria").onchange=e=>{
   e.target.value=nome; catPrec=nome;
 };
 function renderTutto(){ popolaSelectCategorie(); renderSpese(); renderPatrimonio(); renderRegole();
-  renderStatoBackup(); renderAvvisoBackup(); }
+  renderStatoBackup(); renderAvvisoBackup(); renderDrive(); }
 
 /* Chiede al browser di non cancellare i dati per liberare spazio */
 if(navigator.storage && navigator.storage.persist)
@@ -1288,6 +1397,7 @@ if(navigator.storage && navigator.storage.persist)
 popolaSelectCategorie();
 renderTutto();
 salva();
+backupAutomaticoDrive();   // se Drive è collegato ed è passato un mese
 
 if("serviceWorker" in navigator && location.protocol.startsWith("http"))
   navigator.serviceWorker.register("sw.js").catch(()=>{});
