@@ -249,9 +249,12 @@ svg.grafico{width:100%; height:150px; display:block}
         <input type="text" id="inp-drive-id" placeholder="123456-abc.apps.googleusercontent.com"></label>
       <div class="azioni" style="margin-bottom:0">
         <button class="btn primario" id="btn-drive-collega">Collega e salva ora</button>
+        <button class="btn secondario" id="btn-drive-ripristina">⬇ Ripristina da Drive</button>
         <button class="btn secondario" id="btn-drive-scollega">Scollega</button>
       </div>
-      <div class="nota">Una volta collegato, il backup si carica da solo sul tuo Drive
+      <div class="nota"><b>Su un telefono nuovo:</b> incolla qui l'ID client e premi
+        «Ripristina da Drive» — non serve cercare file, l'app te li elenca.<br>
+        Una volta collegato, il backup si carica da solo sul tuo Drive
         quando apri l'app ed è passato un mese dall'ultimo. L'app usa il permesso più
         stretto possibile: <b>vede solo i file che crea lei</b>, non il resto del Drive.
         Finché non lo colleghi, l'app non contatta nessun server esterno.</div>
@@ -295,6 +298,16 @@ svg.grafico{width:100%; height:150px; display:block}
   </div>
   <div class="dlg-piede">
     <button class="btn primario" id="import-conferma">Importa</button>
+  </div>
+</dialog>
+
+<!-- ============ DIALOG BACKUP SU DRIVE ============ -->
+<dialog id="dlg-drive">
+  <div class="dlg-testa"><span>Backup su Google Drive</span><button data-chiudi>✕</button></div>
+  <div class="dlg-corpo">
+    <div class="nota" style="margin-top:0">Scegli quale backup ripristinare. I dati
+      attualmente nell'app verranno sostituiti.</div>
+    <div id="drive-elenco"></div>
   </div>
 </dialog>
 
@@ -861,10 +874,11 @@ $("file-csv-tr").onchange=e=>gestisciFileEstratto(e,"Trade Republic");
 const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 async function gestisciFileEstratto(e, fonte){
-  const f=e.target.files[0]; if(!f) return; e.target.value="";
+  const f=e.target.files[0]; if(!f) return;
   mostraMsg("Leggo "+f.name+"…");
   try{
-    const buffer = await f.arrayBuffer();
+    const buffer = await f.arrayBuffer();   // leggo prima di svuotare il campo
+    e.target.value="";
     const inizio = String.fromCharCode(...new Uint8Array(buffer.slice(0,5)));
     let ris, estratte=null;
     if(inizio.startsWith("%PDF")){          // riconosco il PDF dal contenuto,
@@ -883,7 +897,7 @@ async function gestisciFileEstratto(e, fonte){
       return;
     }
     apriAnteprimaImport(ris.movimenti, fonte, ris.esclusi, ris.avviso);
-  }catch(err){ mostraMsg("Errore: "+err.message); }
+  }catch(err){ e.target.value=""; mostraMsg("Errore: "+err.message); }
 }
 function apriAnteprimaImport(movimenti, fonte, esclusi, avviso){
   importFonte=fonte;
@@ -1179,6 +1193,44 @@ $("btn-drive-collega").onclick=async()=>{
     mostraMsg("Salvato su Drive: "+nome);
   }catch(e){ mostraMsg("Errore: "+e.message); renderDrive(); }
 };
+/* Ripristino dal Drive: non passa dal selettore file di Android */
+$("btn-drive-ripristina").onclick=async()=>{
+  const id=$("inp-drive-id").value.trim();
+  if(id) { stato.driveClientId=id; salva(); }
+  if(!stato.driveClientId){
+    mostraMsg("Prima incolla l'ID client qui sopra: lo trovi su console.cloud.google.com "+
+      "in «API e servizi → Credenziali», oppure nell'app del vecchio telefono."); return; }
+  mostraMsg("Cerco i backup su Drive…");
+  try{
+    const token = await tokenDrive(false);
+    const q = encodeURIComponent("name contains 'monitoraggio-spese' and trashed=false");
+    const r = await fetch("https://www.googleapis.com/drive/v3/files?q="+q+
+      "&orderBy=modifiedTime%20desc&pageSize=25&fields=files(id,name,modifiedTime)",
+      {headers:{Authorization:"Bearer "+token}});
+    if(!r.ok) throw new Error("Google Drive ha risposto "+r.status);
+    const elenco=(await r.json()).files||[];
+    $("drive-elenco").innerHTML = elenco.length ? elenco.map(f=>`
+      <div class="anteprima-riga">
+        <div class="info"><div class="d">${esc(f.name)}</div>
+          <div class="m">${dataIt(f.modifiedTime.slice(0,10))}</div></div>
+        <button class="btn primario" style="flex:0 0 auto; padding:8px 14px"
+          data-id="${esc(f.id)}">Ripristina</button>
+      </div>`).join("")
+      : '<div class="vuoto">Nessun backup trovato su questo account Drive.</div>';
+    $("drive-elenco").querySelectorAll("button[data-id]").forEach(b=>b.onclick=async()=>{
+      if(!confirm("Sostituire i dati dell'app con questo backup?")) return;
+      try{
+        const t=await tokenDrive(false);
+        const risp=await fetch("https://www.googleapis.com/drive/v3/files/"+b.dataset.id+"?alt=media",
+          {headers:{Authorization:"Bearer "+t}});
+        if(!risp.ok) throw new Error("Google Drive ha risposto "+risp.status);
+        applicaBackup(await risp.text(), "Drive");
+        $("dlg-drive").close();
+      }catch(e){ mostraMsg("Errore: "+e.message); }
+    });
+    $("dlg-drive").showModal();
+  }catch(e){ mostraMsg("Errore: "+e.message); }
+};
 $("btn-drive-scollega").onclick=()=>{
   stato.driveClientId=null; stato.driveUltimo=null; tokenDriveVal=null;
   salva(); renderDrive(); mostraMsg("Drive scollegato");
@@ -1197,13 +1249,26 @@ $("btn-condividi").onclick=condividiBackup;
 $("avviso-backup-btn").onclick=condividiBackup;
 $("btn-backup").onclick=()=>{ const f=fileBackup(); scarica(f.name,f); registraBackup(); };
 $("btn-ripristina").onclick=()=>$("file-json").click();
+function applicaBackup(testo, provenienza){
+  if(!testo || !testo.trim())
+    throw new Error("il file risulta vuoto. Se l'hai preso da Google Drive, scaricalo "+
+      "prima sul telefono (menù ⋮ → Scarica) e poi riprova da «Download».");
+  let s;
+  try{ s=JSON.parse(testo); }
+  catch(e){ throw new Error("il file non è un backup leggibile (non è in formato JSON). "+
+    "Controlla di aver scelto il file monitoraggio-spese-….json"); }
+  if(!s || !Array.isArray(s.transazioni))
+    throw new Error("questo file non contiene un registro spese.");
+  stato=migra(s); salva(); renderTutto();
+  mostraMsg(`Backup ripristinato: ${stato.transazioni.length} movimenti`+(provenienza?" da "+provenienza:""));
+}
 $("file-json").onchange=async e=>{
-  const f=e.target.files[0]; if(!f) return; e.target.value="";
+  const f=e.target.files[0]; if(!f) return;
   try{
-    const s=JSON.parse(await f.text());
-    if(!Array.isArray(s.transazioni)) throw new Error("file non valido");
-    stato=migra(s); salva(); renderTutto(); mostraMsg("Backup ripristinato");
-  }catch(err){ mostraMsg("Errore: "+err.message); }
+    const testo = await f.text();   // leggo PRIMA di svuotare il campo:
+    e.target.value="";              // su Android svuotarlo prima invalida il file
+    applicaBackup(testo, f.name);
+  }catch(err){ e.target.value=""; mostraMsg("Errore: "+err.message); }
 };
 $("btn-azzera").onclick=()=>{
   if(confirm("Cancellare TUTTI i dati dell'app? (le regole tornano a quelle predefinite)")){
@@ -1324,11 +1389,12 @@ $("btn-esporta-xlsx").onclick=()=>{
 
 $("btn-importa-xlsx").onclick=()=>$("file-xlsx").click();
 $("file-xlsx").onchange=async e=>{
-  const f=e.target.files[0]; if(!f) return; e.target.value="";
-  if(!richiedeXLSX()) return;
-  if(!confirm("Sostituire i dati dell'app con quelli del file Excel?")) return;
+  const f=e.target.files[0]; if(!f) return;
+  if(!richiedeXLSX()){ e.target.value=""; return; }
+  if(!confirm("Sostituire i dati dell'app con quelli del file Excel?")){ e.target.value=""; return; }
   try{
-    const wb=XLSX.read(await f.arrayBuffer());
+    const dati=await f.arrayBuffer(); e.target.value="";
+    const wb=XLSX.read(dati);
     const ws=wb.Sheets["Monitoraggio Spese"];
     if(!ws) throw new Error('foglio "Monitoraggio Spese" non trovato');
     const nuovo=statoIniziale(); nuovo.transazioni=[]; nuovo.regole=stato.regole;
